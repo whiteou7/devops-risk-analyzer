@@ -1,46 +1,114 @@
 import os from 'node:os';
 import path from 'node:path';
 import { Worker } from 'bullmq';
-import type { AnalyzeJobData, AnalysisResult } from '@devops-risk-analyzer/shared';
+import type { AnalyzeJobData, AnalysisResult, OpsAnalysis } from '@devops-risk-analyzer/shared';
+import {
+  sonarIssuesToRiskItems,
+  trivyFindingsToRiskItems,
+  secretFindingsToRiskItems,
+  hadolintFindingsToRiskItems,
+  checkovFindingsToRiskItems,
+  gitHygieneToRiskItems,
+  buildRiskMatrix,
+} from '@devops-risk-analyzer/shared';
 import { cloneRepo } from './steps/cloneRepo.js';
 import { runSonarScanner } from './steps/runSonarScanner.js';
 import { pollSonarTask } from './steps/pollSonarTask.js';
 import { fetchResults } from './steps/fetchResults.js';
+import { runTrivy } from './steps/runTrivy.js';
+import { runGitleaks } from './steps/runGitleaks.js';
+import { runHadolint } from './steps/runHadolint.js';
+import { runCheckov } from './steps/runCheckov.js';
+import { analyzeGitHygiene } from './steps/analyzeGitHygiene.js';
 import { cleanup } from './cleanup.js';
 import { redis } from './redis.js';
 
-const concurrency = parseInt(process.env.WORKER_CONCURRENCY ?? '2', 10);
+const concurrency = parseInt(process.env['WORKER_CONCURRENCY'] ?? '2', 10);
+const gitCloneDepth = parseInt(process.env['GIT_CLONE_DEPTH'] ?? '50', 10);
 
 export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
   const worker = new Worker<AnalyzeJobData, AnalysisResult>(
     'analysis',
     async (job) => {
       const { repoUrl, projectKey, githubToken } = job.data;
-      const repoDir = path.join(os.tmpdir(), `sonar-${job.id}`);
+      const repoDir = path.join(os.tmpdir(), `analysis-${job.id}`);
+      const jobId = job.id ?? 'unknown';
 
-      // Clear sensitive token from job data in memory after reading
       delete job.data.githubToken;
 
       await job.updateProgress(5);
 
       try {
-        await job.log(`Cloning ${repoUrl}`);
-        await cloneRepo(repoUrl, repoDir, githubToken);
-        await job.updateProgress(25);
+        await job.log(`Cloning ${repoUrl} (depth=${gitCloneDepth})`);
+        await cloneRepo(repoUrl, repoDir, githubToken, gitCloneDepth);
+        await job.updateProgress(15);
 
-        await job.log(`Running sonar-scanner for project ${projectKey}`);
-        const ceTaskId = await runSonarScanner(repoDir, projectKey);
-        await job.updateProgress(50);
+        // Run SonarQube pipeline and all ops tools in parallel
+        await job.log('Running dev analysis (SonarQube) and ops analysis in parallel');
 
-        await job.log(`Polling CE task ${ceTaskId}`);
-        await pollSonarTask(ceTaskId);
-        await job.updateProgress(80);
+        const [sonarResult, opsResults] = await Promise.all([
+          // Dev pipeline: scanner → poll → fetch
+          (async () => {
+            const ceTaskId = await runSonarScanner(repoDir, projectKey);
+            await job.updateProgress(35);
+            await job.log(`Polling SonarQube CE task ${ceTaskId}`);
+            await pollSonarTask(ceTaskId);
+            await job.updateProgress(60);
+            await job.log('Fetching SonarQube results');
+            return fetchResults(projectKey, repoUrl);
+          })(),
 
-        await job.log('Fetching results from SonarQube');
-        const result = await fetchResults(projectKey, repoUrl);
+          // Ops pipeline: all tools in parallel
+          Promise.all([
+            process.env['SKIP_TRIVY'] !== 'true'
+              ? runTrivy(repoDir).catch(e => { console.warn('[trivy] error:', e.message); return null; })
+              : Promise.resolve(null),
+            process.env['SKIP_GITLEAKS'] !== 'true'
+              ? runGitleaks(repoDir, jobId).catch(e => { console.warn('[gitleaks] error:', e.message); return null; })
+              : Promise.resolve(null),
+            process.env['SKIP_HADOLINT'] !== 'true'
+              ? runHadolint(repoDir).catch(e => { console.warn('[hadolint] error:', e.message); return null; })
+              : Promise.resolve(null),
+            process.env['SKIP_CHECKOV'] !== 'true'
+              ? runCheckov(repoDir).catch(e => { console.warn('[checkov] error:', e.message); return null; })
+              : Promise.resolve(null),
+            analyzeGitHygiene(repoDir).catch(e => { console.warn('[git-hygiene] error:', e.message); return null; }),
+          ]),
+        ]);
+
+        await job.updateProgress(85);
+
+        const [trivyResult, gitleaksResult, hadolintResult, checkovResult, gitHygieneResult] = opsResults;
+
+        // Build OpsAnalysis (raw tool outputs)
+        const opsAnalysis: OpsAnalysis = {
+          trivy: trivyResult ?? { critical: 0, high: 0, medium: 0, low: 0, findings: [] },
+          secrets: gitleaksResult ?? { count: 0, findings: [] },
+          hadolint: hadolintResult ?? { errors: 0, warnings: 0, findings: [] },
+          checkov: checkovResult ?? { passed: 0, failed: 0, findings: [] },
+          gitHygiene: gitHygieneResult ?? {
+            uniqueAuthors: 1,
+            recentCommitCount: 0,
+            hasGitignore: true,
+            topContributorCommitShare: 1,
+          },
+        };
+
+        // Map all findings to RiskItems and build the risk matrix
+        const devItems = sonarIssuesToRiskItems(sonarResult.issues);
+        const opsItems = [
+          ...trivyFindingsToRiskItems(opsAnalysis.trivy.findings),
+          ...secretFindingsToRiskItems(opsAnalysis.secrets.findings),
+          ...hadolintFindingsToRiskItems(opsAnalysis.hadolint.findings),
+          ...checkovFindingsToRiskItems(opsAnalysis.checkov.findings),
+          ...gitHygieneToRiskItems(opsAnalysis.gitHygiene),
+        ];
+
+        const riskMatrix = buildRiskMatrix(devItems, opsItems);
+
         await job.updateProgress(100);
 
-        return result;
+        return { ...sonarResult, opsAnalysis, riskMatrix };
       } finally {
         await cleanup(repoDir);
       }

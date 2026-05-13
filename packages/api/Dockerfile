@@ -34,6 +34,7 @@ COPY packages/api/package.json ./packages/api/
 RUN npm install --omit=dev
 
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/shared/config ./packages/shared/config
 COPY --from=builder /app/packages/api/dist ./packages/api/dist
 
 ENV NODE_ENV=production

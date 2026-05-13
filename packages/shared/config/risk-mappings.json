@@ -1,0 +1,58 @@
+{
+  "sonarqube": {
+    "BUG": {
+      "BLOCKER":  { "impact": 5, "likelihood": 4 },
+      "CRITICAL": { "impact": 4, "likelihood": 3 },
+      "MAJOR":    { "impact": 3, "likelihood": 3 },
+      "MINOR":    { "impact": 2, "likelihood": 2 },
+      "INFO":     { "impact": 1, "likelihood": 1 }
+    },
+    "VULNERABILITY": {
+      "BLOCKER":  { "impact": 5, "likelihood": 5 },
+      "CRITICAL": { "impact": 5, "likelihood": 4 },
+      "MAJOR":    { "impact": 4, "likelihood": 3 },
+      "MINOR":    { "impact": 2, "likelihood": 2 },
+      "INFO":     { "impact": 1, "likelihood": 1 }
+    },
+    "CODE_SMELL": {
+      "BLOCKER":  { "impact": 3, "likelihood": 4 },
+      "CRITICAL": { "impact": 2, "likelihood": 3 },
+      "MAJOR":    { "impact": 2, "likelihood": 2 },
+      "MINOR":    { "impact": 1, "likelihood": 2 },
+      "INFO":     { "impact": 1, "likelihood": 1 }
+    }
+  },
+  "trivy": {
+    "CRITICAL": { "impact": 5, "likelihood": 5 },
+    "HIGH":     { "impact": 4, "likelihood": 4 },
+    "MEDIUM":   { "impact": 3, "likelihood": 3 },
+    "LOW":      { "impact": 2, "likelihood": 2 },
+    "UNKNOWN":  { "impact": 2, "likelihood": 2 }
+  },
+  "gitleaks": {
+    "default":              { "impact": 5, "likelihood": 5 },
+    "aws-access-token":     { "impact": 5, "likelihood": 5 },
+    "aws-secret-key":       { "impact": 5, "likelihood": 5 },
+    "github-pat":           { "impact": 4, "likelihood": 5 },
+    "generic-api-key":      { "impact": 4, "likelihood": 4 },
+    "private-key":          { "impact": 5, "likelihood": 4 },
+    "stripe-access-token":  { "impact": 5, "likelihood": 5 },
+    "slack-webhook":        { "impact": 3, "likelihood": 4 },
+    "password-in-url":      { "impact": 4, "likelihood": 5 }
+  },
+  "hadolint": {
+    "error":   { "impact": 3, "likelihood": 4 },
+    "warning": { "impact": 2, "likelihood": 3 },
+    "info":    { "impact": 1, "likelihood": 2 },
+    "style":   { "impact": 1, "likelihood": 1 }
+  },
+  "checkov": {
+    "HIGH":   { "impact": 4, "likelihood": 3 },
+    "MEDIUM": { "impact": 3, "likelihood": 2 },
+    "LOW":    { "impact": 2, "likelihood": 2 }
+  },
+  "git-hygiene": {
+    "single-author":    { "impact": 3, "likelihood": 4 },
+    "no-gitignore":     { "impact": 3, "likelihood": 3 }
+  }
+}

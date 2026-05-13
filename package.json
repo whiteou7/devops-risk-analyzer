@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc --build packages/shared packages/api packages/worker",
     "dev:api": "npm run dev --workspace=packages/api",
-    "dev:worker": "npm run dev --workspace=packages/worker"
+    "dev:worker": "npm run dev --workspace=packages/worker",
+    "dev:web": "npm run dev --workspace=packages/web"
   },
   "devDependencies": {
     "typescript": "^5.4.5"

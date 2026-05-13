@@ -49,7 +49,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -64,11 +64,42 @@ services:
       REDIS_URL: redis://redis:6379
       SONAR_URL: http://sonarqube:9000
       SONAR_TOKEN: ${SONAR_TOKEN}
-      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      GIT_CLONE_DEPTH: ${GIT_CLONE_DEPTH:-50}
+      SKIP_TRIVY: ${SKIP_TRIVY:-false}
+      SKIP_GITLEAKS: ${SKIP_GITLEAKS:-false}
+      SKIP_HADOLINT: ${SKIP_HADOLINT:-false}
+      SKIP_CHECKOV: ${SKIP_CHECKOV:-false}
     depends_on:
       redis:
         condition: service_healthy
       sonarqube:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: devops_risk
+      POSTGRES_USER: devops_risk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devops_risk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
         condition: service_healthy
 
 volumes:
@@ -76,3 +107,4 @@ volumes:
   sonar_data:
   sonar_extensions:
   sonar_logs:
+  postgres_data:

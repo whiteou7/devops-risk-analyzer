@@ -3,14 +3,11 @@ import fs from 'node:fs/promises';
 
 const CLONE_TIMEOUT_MS = 120_000;
 
-/**
- * Clone a GitHub repo to a local directory.
- * Uses --depth 1 (shallow clone) to minimize time and disk usage.
- */
 export async function cloneRepo(
   repoUrl: string,
   destDir: string,
   githubToken?: string,
+  depth: number = 1,
 ): Promise<void> {
   // Wipe destination if it already exists (stalled job retry scenario)
   await fs.rm(destDir, { recursive: true, force: true });
@@ -19,18 +16,15 @@ export async function cloneRepo(
     ? repoUrl.replace('https://', `https://${githubToken}@`)
     : repoUrl;
 
-  const clonePromise = execa('git', ['clone', '--depth', '1', cloneUrl, destDir], {
-    reject: true,
-    timeout: CLONE_TIMEOUT_MS,
-    env: {
-      ...process.env,
-      // Prevent git from prompting for credentials (would hang)
-      GIT_TERMINAL_PROMPT: '0',
-    },
-  });
-
   try {
-    await clonePromise;
+    await execa('git', ['clone', '--depth', String(depth), cloneUrl, destDir], {
+      reject: true,
+      timeout: CLONE_TIMEOUT_MS,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+      },
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
 

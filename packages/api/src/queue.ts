@@ -8,6 +8,10 @@ export const redis = new Redis(redisUrl, {
   maxRetriesPerRequest: null, // required by BullMQ
 });
 
+redis.on('error', (err) => {
+  console.error('[redis] connection error:', err.message);
+});
+
 export const analysisQueue = new Queue<AnalyzeJobData>('analysis', {
   connection: redis,
   defaultJobOptions: {
