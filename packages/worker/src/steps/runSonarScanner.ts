@@ -31,6 +31,18 @@ export async function runSonarScanner(
 
   await fs.writeFile(path.join(repoDir, 'sonar-project.properties'), propsContent, 'utf8');
 
+  // Ignore the generated properties file so Gitleaks doesn't flag the token we wrote into it.
+  const ignorePath = path.join(repoDir, '.gitleaksignore');
+  const ignoreEntry = 'sonar-project.properties\n';
+  try {
+    const existing = await fs.readFile(ignorePath, 'utf8');
+    if (!existing.includes('sonar-project.properties')) {
+      await fs.appendFile(ignorePath, ignoreEntry, 'utf8');
+    }
+  } catch {
+    await fs.writeFile(ignorePath, ignoreEntry, 'utf8');
+  }
+
   let stdout = '';
   let stderr = '';
 
