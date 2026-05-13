@@ -1,0 +1,16 @@
+{
+  "name": "devops-risk-analyzer",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc --build packages/shared packages/api packages/worker",
+    "dev:api": "npm run dev --workspace=packages/api",
+    "dev:worker": "npm run dev --workspace=packages/worker"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@devops-risk-analyzer/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "node --watch dist/main.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@devops-risk-analyzer/shared": "*",
+    "axios": "^1.7.2",
+    "bullmq": "^5.12.0",
+    "execa": "^9.3.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}

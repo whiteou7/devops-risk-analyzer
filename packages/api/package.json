@@ -1,0 +1,22 @@
+{
+  "name": "@devops-risk-analyzer/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "node --watch --experimental-specifier-resolution=node dist/main.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@devops-risk-analyzer/shared": "*",
+    "bullmq": "^5.12.0",
+    "fastify": "^4.27.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}
