@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { submitAnalysis } from '../api/client.ts';
 import { useJobStore } from '../stores/jobStore.ts';
@@ -8,10 +8,96 @@ const router = useRouter();
 const store = useJobStore();
 
 const repoUrl = ref('');
+const selectedSha = ref('');
 const githubToken = ref('');
 const showToken = ref(false);
 const loading = ref(false);
 const formError = ref('');
+
+interface CommitOption {
+  sha: string;
+  message: string;
+  date: string;
+  author: string;
+}
+
+const commits = ref<CommitOption[]>([]);
+const commitsLoading = ref(false);
+const commitsError = ref('');
+
+let fetchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function parseGithubRepo(url: string): { owner: string; repo: string } | null {
+  try {
+    const u = new URL(url.trim());
+    if (u.hostname !== 'github.com') return null;
+    const parts = u.pathname.replace(/^\//, '').replace(/\.git$/, '').split('/');
+    if (parts.length < 2 || !parts[0] || !parts[1]) return null;
+    return { owner: parts[0], repo: parts[1] };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCommits(url: string, token: string): Promise<void> {
+  const parsed = parseGithubRepo(url);
+  if (!parsed) {
+    commits.value = [];
+    commitsError.value = '';
+    return;
+  }
+
+  commitsLoading.value = true;
+  commitsError.value = '';
+  commits.value = [];
+  selectedSha.value = '';
+
+  try {
+    const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(
+      `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits?per_page=30`,
+      { headers },
+    );
+
+    if (!res.ok) {
+      if (res.status === 404) commitsError.value = 'Repository not found or private — add a token below.';
+      else if (res.status === 401 || res.status === 403) commitsError.value = 'Access denied — check your GitHub token.';
+      else commitsError.value = `GitHub API error: ${res.status}`;
+      return;
+    }
+
+    const data = await res.json();
+    commits.value = data.map((c: any) => ({
+      sha: c.sha,
+      message: c.commit.message.split('\n')[0].slice(0, 72),
+      date: new Date(c.commit.author.date).toLocaleDateString(),
+      author: c.commit.author.name,
+    }));
+  } catch {
+    commitsError.value = 'Failed to reach GitHub API.';
+  } finally {
+    commitsLoading.value = false;
+  }
+}
+
+watch(repoUrl, (url: string) => {
+  if (fetchDebounceTimer) clearTimeout(fetchDebounceTimer);
+  if (!parseGithubRepo(url)) {
+    commits.value = [];
+    commitsError.value = '';
+    selectedSha.value = '';
+    return;
+  }
+  fetchDebounceTimer = setTimeout(() => fetchCommits(url, githubToken.value), 600);
+});
+
+watch(githubToken, (token: string) => {
+  if (commitsError.value && repoUrl.value) {
+    fetchCommits(repoUrl.value, token);
+  }
+});
 
 async function submit(): Promise<void> {
   formError.value = '';
@@ -21,12 +107,20 @@ async function submit(): Promise<void> {
   }
   loading.value = true;
   try {
-    const job = await submitAnalysis({
+    const response = await submitAnalysis({
       repoUrl: repoUrl.value.trim(),
+      ...(selectedSha.value ? { commitSha: selectedSha.value } : {}),
       ...(githubToken.value ? { githubToken: githubToken.value } : {}),
     });
-    store.setJob(job.jobId);
-    await router.push(`/results/${job.jobId}`);
+
+    if (response.data.cached) {
+      store.setJob('cached');
+      store.applyCompleted(response.data.result);
+      await router.push('/results/cached');
+    } else {
+      store.setJob(response.data.id);
+      await router.push(`/results/${response.data.id}`);
+    }
   } catch (err) {
     formError.value = (err as Error).message;
   } finally {
@@ -57,6 +151,38 @@ async function submit(): Promise<void> {
           placeholder="https://github.com/owner/repo"
           class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="text-sm font-medium text-slate-300">
+          Commit
+          <span class="text-slate-500 font-normal">(optional — defaults to latest)</span>
+        </label>
+
+        <div v-if="commitsLoading" class="flex items-center gap-2 text-slate-400 text-sm py-2">
+          <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          Fetching commits…
+        </div>
+
+        <p v-else-if="commitsError" class="text-amber-400 text-sm">{{ commitsError }}</p>
+
+        <select
+          v-else-if="commits.length"
+          v-model="selectedSha"
+          class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Latest (HEAD)</option>
+          <option v-for="c in commits" :key="c.sha" :value="c.sha">
+            {{ c.sha.slice(0, 7) }} · {{ c.message }} ({{ c.author }}, {{ c.date }})
+          </option>
+        </select>
+
+        <p v-else-if="!repoUrl" class="text-slate-500 text-sm italic">
+          Enter a repo URL to load commits.
+        </p>
       </div>
 
       <div class="space-y-1.5">

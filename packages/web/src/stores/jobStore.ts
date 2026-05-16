@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { JobResponse, AnalysisResult } from '@devops-risk-analyzer/shared';
+import type { JobStatus, AnalysisResult } from '@devops-risk-analyzer/shared';
 
 export const useJobStore = defineStore('job', () => {
   const jobId = ref<string | null>(null);
-  const status = ref<JobResponse['status']>('waiting');
+  const status = ref<JobStatus>('waiting');
   const progress = ref<number>(0);
   const stage = ref<string>('');
   const result = ref<AnalysisResult | null>(null);

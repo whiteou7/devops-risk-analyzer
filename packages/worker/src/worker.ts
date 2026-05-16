@@ -11,6 +11,7 @@ import {
   gitHygieneToRiskItems,
   buildRiskMatrix,
 } from '@devops-risk-analyzer/shared';
+import { findAnalysis, saveAnalysis } from '@devops-risk-analyzer/db';
 import { cloneRepo } from './steps/cloneRepo.js';
 import { runSonarScanner } from './steps/runSonarScanner.js';
 import { pollSonarTask } from './steps/pollSonarTask.js';
@@ -30,7 +31,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
   const worker = new Worker<AnalyzeJobData, AnalysisResult>(
     'analysis',
     async (job) => {
-      const { repoUrl, projectKey, githubToken } = job.data;
+      const { repoUrl, projectKey, githubToken, commitSha: requestedSha } = job.data;
       const repoDir = path.join(os.tmpdir(), `analysis-${job.id}`);
       const jobId = job.id ?? 'unknown';
 
@@ -39,9 +40,17 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
       await job.updateProgress(5);
 
       try {
-        await job.log(`Cloning ${repoUrl} (depth=${gitCloneDepth})`);
-        await cloneRepo(repoUrl, repoDir, githubToken, gitCloneDepth);
+        await job.log(`Cloning ${repoUrl}${requestedSha ? `@${requestedSha}` : ''} (depth=${gitCloneDepth})`);
+        const resolvedSha = await cloneRepo(repoUrl, repoDir, githubToken, gitCloneDepth, requestedSha);
         await job.updateProgress(15);
+
+        // Check DB cache for this exact repo+commit before running any analysis
+        const cached = await findAnalysis(repoUrl, resolvedSha);
+        if (cached) {
+          await job.log(`Cache hit for ${repoUrl}@${resolvedSha} — returning stored result`);
+          await cleanup(repoDir);
+          return cached.result;
+        }
 
         // Run SonarQube pipeline and all ops tools in parallel
         await job.log('Running dev analysis (SonarQube) and ops analysis in parallel');
@@ -106,9 +115,16 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
 
         const riskMatrix = buildRiskMatrix(devItems, opsItems);
 
+        await job.updateProgress(95);
+
+        const result: AnalysisResult = { ...sonarResult, commitSha: resolvedSha, opsAnalysis, riskMatrix };
+
+        // Persist to DB so future requests for the same repo+commit are served from cache
+        await saveAnalysis(repoUrl, resolvedSha, projectKey, result);
+
         await job.updateProgress(100);
 
-        return { ...sonarResult, opsAnalysis, riskMatrix };
+        return result;
       } finally {
         await cleanup(repoDir);
       }

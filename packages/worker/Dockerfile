@@ -56,15 +56,21 @@ WORKDIR /app
 
 COPY package.json ./
 COPY tsconfig.base.json ./
+
+# Copy package manifests (db must come before worker — it's a dependency)
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/db/package.json ./packages/db/
 COPY packages/worker/package.json ./packages/worker/
 
 RUN npm install
 
 COPY packages/shared ./packages/shared
+COPY packages/db ./packages/db
 COPY packages/worker ./packages/worker
 
+# Build in dependency order: shared → db → worker
 RUN npm run build --workspace=packages/shared
+RUN npm run build --workspace=packages/db
 RUN npm run build --workspace=packages/worker
 
 # ---- Runtime stage ----
@@ -75,11 +81,13 @@ WORKDIR /app
 COPY package.json ./
 COPY tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/db/package.json ./packages/db/
 COPY packages/worker/package.json ./packages/worker/
 
 RUN npm install --omit=dev
 
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/db/dist ./packages/db/dist
 COPY --from=builder /app/packages/worker/dist ./packages/worker/dist
 COPY packages/shared/config ./packages/shared/config
 

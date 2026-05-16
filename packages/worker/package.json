@@ -10,6 +10,7 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
+    "@devops-risk-analyzer/db": "*",
     "@devops-risk-analyzer/shared": "*",
     "axios": "^1.7.2",
     "bullmq": "^5.12.0",

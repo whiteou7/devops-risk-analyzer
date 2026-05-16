@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { migrate } from '@devops-risk-analyzer/db';
 import { analyzeRoutes } from './routes/analyze.js';
 
 const app = Fastify({
@@ -7,9 +8,10 @@ const app = Fastify({
   },
 });
 
+await migrate();
+
 await app.register(analyzeRoutes);
 
-// Health check
 app.get('/health', async () => ({ status: 'ok' }));
 
 const port = parseInt(process.env.PORT ?? '3000', 10);

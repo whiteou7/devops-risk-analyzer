@@ -89,7 +89,7 @@ const sourceLabel: Record<string, string> = {
           >
             <td class="px-4 py-3">
               <div class="font-medium text-slate-200 leading-snug">{{ item.title }}</div>
-              <div class="text-slate-500 text-xs mt-0.5 truncate max-w-md">{{ item.detail }}</div>
+              <div class="text-slate-500 text-xs mt-0.5 max-w-md">{{ item.detail }}</div>
               <div v-if="item.file" class="text-slate-600 text-xs mt-0.5 font-mono truncate max-w-md">
                 {{ item.file }}<span v-if="item.line">:{{ item.line }}</span>
               </div>

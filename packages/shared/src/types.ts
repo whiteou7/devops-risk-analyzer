@@ -8,6 +8,7 @@ export interface AnalyzeJobData {
   repoUrl: string;
   projectKey: string;
   submittedAt: string;
+  commitSha?: string;
   /** Optional GitHub PAT for private repos. Cleared from memory after clone. */
   githubToken?: string;
 }
@@ -179,6 +180,8 @@ export interface RiskMatrix {
 export interface AnalysisResult {
   projectKey: string;
   repoUrl: string;
+  /** Resolved full commit SHA that was analyzed. */
+  commitSha: string;
   analyzedAt: string;
   metrics: SonarMetrics;
   issues: SonarIssue[];
@@ -188,20 +191,54 @@ export interface AnalysisResult {
 }
 
 // ---------------------------------------------------------------------------
-// HTTP request / response shapes
+// HTTP request / response shapes — REST normalized
 // ---------------------------------------------------------------------------
 
 export interface AnalyzeRequest {
   repoUrl: string;
   githubToken?: string;
+  /** Specific commit SHA to analyze. Defaults to HEAD when omitted. */
+  commitSha?: string;
 }
 
-export interface JobResponse {
-  jobId: string;
+/** Envelope for all successful API responses. */
+export interface ApiResponse<T> {
+  data: T;
+}
+
+/** Envelope for all API error responses. */
+export interface ApiErrorBody {
+  error: {
+    code: string;
+    message: string;
+  };
+}
+
+/** Job resource returned by GET /jobs/:id and POST /analyze (new job). */
+export interface JobResource {
+  id: string;
   status: JobStatus;
+  repoUrl: string;
+  commitSha?: string;
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
   result?: AnalysisResult;
   error?: string;
 }
+
+/** Returned by POST /analyze when a cached result is found for the given repo+commit. */
+export interface CachedAnalysisResource {
+  cached: true;
+  repoUrl: string;
+  commitSha: string;
+  result: AnalysisResult;
+}
+
+/** Union of possible POST /analyze response data shapes. */
+export type AnalyzeResponseData =
+  | ({ cached: false } & Pick<JobResource, 'id' | 'status' | 'repoUrl' | 'commitSha' | 'createdAt'>)
+  | CachedAnalysisResource;
+
+/** @deprecated Use JobResource */
+export type JobResponse = JobResource & { jobId: string };

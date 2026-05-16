@@ -35,7 +35,7 @@ const METRIC_KEYS = [
 export async function fetchResults(
   projectKey: string,
   repoUrl: string,
-): Promise<AnalysisResult> {
+): Promise<Omit<AnalysisResult, 'commitSha'>> {
   const client = getSonarClient();
   const sonarUrl = process.env.SONAR_URL!;
 

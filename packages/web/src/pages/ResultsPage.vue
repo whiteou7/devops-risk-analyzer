@@ -15,10 +15,15 @@ const phaseFilter = ref<RiskPhase | 'ALL'>('ALL');
 
 // Bootstrap: if store has no job set (e.g. direct URL navigation), poll once then stream
 onMounted(async () => {
+  // 'cached' is a virtual job ID used when a result is served from the DB cache
+  // without enqueuing a job. The store is already populated by HomePage.
+  if (props.jobId === 'cached') return;
+
   if (store.jobId !== props.jobId) {
     store.setJob(props.jobId);
     try {
-      const job = await getJob(props.jobId);
+      const response = await getJob(props.jobId);
+      const job = response.data;
       if (job.status === 'completed' && job.result) {
         store.applyCompleted(job.result);
         return;
@@ -53,7 +58,13 @@ const correlationClass: Record<string, string> = {
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-2xl font-bold text-white">Risk Analysis</h2>
-        <p v-if="store.result" class="text-slate-400 text-sm mt-1">{{ store.result.repoUrl }}</p>
+        <div v-if="store.result" class="flex items-center gap-2 mt-1">
+          <p class="text-slate-400 text-sm">{{ store.result.repoUrl }}</p>
+          <span
+            v-if="jobId === 'cached'"
+            class="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-400 border border-emerald-700"
+          >cached</span>
+        </div>
       </div>
       <RouterLink to="/" class="text-sm text-slate-400 hover:text-white transition-colors">
         ← New analysis

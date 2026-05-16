@@ -7,7 +7,8 @@
     "types": ["node"]
   },
   "references": [
-    { "path": "../shared" }
+    { "path": "../shared" },
+    { "path": "../db" }
   ],
   "include": ["src/**/*"]
 }

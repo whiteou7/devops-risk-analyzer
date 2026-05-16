@@ -1,18 +1,29 @@
 import type { FastifyInstance } from 'fastify';
 import { QueueEvents } from 'bullmq';
 import { analysisQueue, redis } from '../queue.js';
-import type { AnalyzeRequest, JobResponse } from '@devops-risk-analyzer/shared';
+import { findAnalysis } from '@devops-risk-analyzer/db';
+import type {
+  AnalyzeRequest,
+  ApiResponse,
+  ApiErrorBody,
+  JobResource,
+  AnalyzeResponseData,
+} from '@devops-risk-analyzer/shared';
 
 const GITHUB_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+$/;
+const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 
 /** Derive a SonarQube-safe project key from a GitHub repo URL. */
 function deriveProjectKey(repoUrl: string): string {
-  // "https://github.com/owner/repo" → "owner_repo"
   const path = repoUrl.replace('https://github.com/', '');
   return path
     .toLowerCase()
     .replace(/[^a-z0-9_.-]/g, '_')
     .slice(0, 200);
+}
+
+function apiError(code: string, message: string): ApiErrorBody {
+  return { error: { code, message } };
 }
 
 export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
@@ -30,16 +41,41 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
               pattern: '^https://github\\.com/[^/]+/[^/]+$',
             },
             githubToken: { type: 'string' },
+            commitSha: { type: 'string' },
           },
           additionalProperties: false,
         },
       },
     },
     async (request, reply) => {
-      const { repoUrl, githubToken } = request.body;
+      const { repoUrl, githubToken, commitSha } = request.body;
 
       if (!GITHUB_URL_PATTERN.test(repoUrl)) {
-        return reply.status(400).send({ error: 'Invalid GitHub repository URL' });
+        return reply
+          .status(400)
+          .send(apiError('BAD_REQUEST', 'Invalid GitHub repository URL'));
+      }
+
+      if (commitSha !== undefined && !COMMIT_SHA_PATTERN.test(commitSha)) {
+        return reply
+          .status(400)
+          .send(apiError('BAD_REQUEST', 'commitSha must be a 7–40 character hex string'));
+      }
+
+      // Cache check: only possible when the caller supplies an explicit commit SHA
+      if (commitSha) {
+        const cached = await findAnalysis(repoUrl, commitSha).catch(() => null);
+        if (cached) {
+          const body: ApiResponse<AnalyzeResponseData> = {
+            data: {
+              cached: true,
+              repoUrl,
+              commitSha,
+              result: cached.result,
+            },
+          };
+          return reply.status(200).send(body);
+        }
       }
 
       const projectKey = deriveProjectKey(repoUrl);
@@ -49,16 +85,22 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
         repoUrl,
         projectKey,
         submittedAt,
+        commitSha,
         ...(githubToken ? { githubToken } : {}),
       });
 
-      const response: JobResponse = {
-        jobId: job.id!,
-        status: 'waiting',
-        createdAt: submittedAt,
+      const body: ApiResponse<AnalyzeResponseData> = {
+        data: {
+          cached: false,
+          id: job.id!,
+          status: 'waiting',
+          repoUrl,
+          commitSha,
+          createdAt: submittedAt,
+        },
       };
 
-      return reply.status(202).send(response);
+      return reply.status(202).send(body);
     },
   );
 
@@ -80,13 +122,14 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
       const job = await analysisQueue.getJob(request.params.id);
 
       if (!job) {
-        return reply.status(404).send({ error: 'Job not found' });
+        return reply
+          .status(404)
+          .send(apiError('NOT_FOUND', 'Job not found'));
       }
 
       const state = await job.getState();
 
-      // Map BullMQ states to our JobStatus
-      const statusMap: Record<string, JobResponse['status']> = {
+      const statusMap: Record<string, JobResource['status']> = {
         waiting: 'waiting',
         'waiting-children': 'waiting',
         prioritized: 'waiting',
@@ -98,10 +141,13 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
       };
 
       const status = statusMap[state] ?? 'waiting';
+      const jobData = job.data;
 
-      const response: JobResponse = {
-        jobId: job.id!,
+      const resource: JobResource = {
+        id: job.id!,
         status,
+        repoUrl: jobData.repoUrl,
+        commitSha: jobData.commitSha,
         createdAt: new Date(job.timestamp).toISOString(),
         ...(job.processedOn
           ? { startedAt: new Date(job.processedOn).toISOString() }
@@ -109,11 +155,16 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
         ...(job.finishedOn
           ? { finishedAt: new Date(job.finishedOn).toISOString() }
           : {}),
-        ...(state === 'completed' ? { result: job.returnvalue } : {}),
+        ...(state === 'completed' ? {
+          result: typeof job.returnvalue === 'string'
+            ? JSON.parse(job.returnvalue)
+            : job.returnvalue,
+        } : {}),
         ...(state === 'failed' ? { error: job.failedReason } : {}),
       };
 
-      return reply.send(response);
+      const body: ApiResponse<JobResource> = { data: resource };
+      return reply.send(body);
     },
   );
 
@@ -123,27 +174,28 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { id } = request.params;
 
-      // Verify job exists before opening the stream
       const job = await analysisQueue.getJob(id);
       if (!job) {
-        return reply.status(404).send({ error: 'Job not found' });
+        return reply
+          .status(404)
+          .send(apiError('NOT_FOUND', 'Job not found'));
       }
 
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no', // disable Nginx buffering
+        'X-Accel-Buffering': 'no',
       });
 
       const send = (data: object): void => {
         reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
-      // Check if already completed/failed before subscribing
       const initialState = await job.getState();
       if (initialState === 'completed') {
-        send({ type: 'completed', result: job.returnvalue });
+        const rv = job.returnvalue;
+        send({ type: 'completed', result: typeof rv === 'string' ? JSON.parse(rv) : rv });
         reply.raw.end();
         return;
       }
@@ -153,7 +205,6 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      // Use a dedicated connection for QueueEvents (BullMQ requirement)
       const queueEvents = new QueueEvents('analysis', { connection: redis.duplicate() });
 
       const onProgress = ({ jobId, data }: { jobId: string; data: unknown }): void => {
@@ -164,7 +215,8 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
       const onCompleted = async ({ jobId }: { jobId: string }): Promise<void> => {
         if (jobId !== id) return;
         const completed = await analysisQueue.getJob(jobId);
-        send({ type: 'completed', result: completed?.returnvalue ?? null });
+        const rv = completed?.returnvalue ?? null;
+        send({ type: 'completed', result: typeof rv === 'string' ? JSON.parse(rv) : rv });
         teardown();
       };
 
@@ -186,7 +238,6 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
       queueEvents.on('completed', onCompleted);
       queueEvents.on('failed', onFailed);
 
-      // Clean up if the client disconnects
       request.raw.on('close', teardown);
     },
   );
