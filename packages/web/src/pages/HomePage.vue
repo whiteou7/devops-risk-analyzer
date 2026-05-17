@@ -3,7 +3,6 @@ import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { submitAnalysis } from '../api/client.ts';
 import { useJobStore } from '../stores/jobStore.ts';
-
 const router = useRouter();
 const store = useJobStore();
 
@@ -13,6 +12,7 @@ const githubToken = ref('');
 const showToken = ref(false);
 const loading = ref(false);
 const formError = ref('');
+const useCached = ref(true);
 
 interface CommitOption {
   sha: string;
@@ -111,6 +111,7 @@ async function submit(): Promise<void> {
       repoUrl: repoUrl.value.trim(),
       ...(selectedSha.value ? { commitSha: selectedSha.value } : {}),
       ...(githubToken.value ? { githubToken: githubToken.value } : {}),
+      ...(!useCached.value ? { forceRefresh: true } : {}),
     });
 
     if (response.data.cached) {
@@ -141,7 +142,7 @@ async function submit(): Promise<void> {
 
     <form
       class="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5"
-      @submit.prevent="submit"
+      @submit.prevent="submit()"
     >
       <div class="space-y-1.5">
         <label class="text-sm font-medium text-slate-300">GitHub Repository URL</label>
@@ -201,6 +202,15 @@ async function submit(): Promise<void> {
           class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
+
+      <label class="flex items-center gap-2 text-sm text-slate-300 select-none cursor-pointer">
+        <input
+          v-model="useCached"
+          type="checkbox"
+          class="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
+        />
+        Use cached result if available
+      </label>
 
       <p v-if="formError" class="text-red-400 text-sm">{{ formError }}</p>
 

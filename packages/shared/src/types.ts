@@ -11,6 +11,8 @@ export interface AnalyzeJobData {
   commitSha?: string;
   /** Optional GitHub PAT for private repos. Cleared from memory after clone. */
   githubToken?: string;
+  /** When true, skip the DB cache and always run a fresh analysis. */
+  forceRefresh?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +212,8 @@ export interface AnalyzeRequest {
   githubToken?: string;
   /** Specific commit SHA to analyze. Defaults to HEAD when omitted. */
   commitSha?: string;
+  /** When true, skip the cache and always run a fresh analysis. */
+  forceRefresh?: boolean;
 }
 
 /** Envelope for all successful API responses. */

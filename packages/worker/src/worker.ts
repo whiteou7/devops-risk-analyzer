@@ -33,7 +33,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
   const worker = new Worker<AnalyzeJobData, AnalysisResult>(
     'analysis',
     async (job) => {
-      const { repoUrl, projectKey, githubToken, commitSha: requestedSha } = job.data;
+      const { repoUrl, projectKey, githubToken, commitSha: requestedSha, forceRefresh } = job.data;
       const repoDir = path.join(os.tmpdir(), `analysis-${job.id}`);
       const jobId = job.id ?? 'unknown';
 
@@ -47,7 +47,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
         await job.updateProgress(15);
 
         // Check DB cache for this exact repo+commit before running any analysis
-        const cached = await findAnalysis(repoUrl, resolvedSha);
+        const cached = !forceRefresh ? await findAnalysis(repoUrl, resolvedSha) : null;
         if (cached) {
           await job.log(`Cache hit for ${repoUrl}@${resolvedSha} — returning stored result`);
           await cleanup(repoDir);

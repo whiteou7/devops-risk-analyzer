@@ -42,13 +42,14 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
             },
             githubToken: { type: 'string' },
             commitSha: { type: 'string' },
+            forceRefresh: { type: 'boolean' },
           },
           additionalProperties: false,
         },
       },
     },
     async (request, reply) => {
-      const { repoUrl, githubToken, commitSha } = request.body;
+      const { repoUrl, githubToken, commitSha, forceRefresh } = request.body;
 
       if (!GITHUB_URL_PATTERN.test(repoUrl)) {
         return reply
@@ -62,8 +63,8 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
           .send(apiError('BAD_REQUEST', 'commitSha must be a 7–40 character hex string'));
       }
 
-      // Cache check: only possible when the caller supplies an explicit commit SHA
-      if (commitSha) {
+      // Cache check: only possible when the caller supplies an explicit commit SHA and hasn't requested a fresh run
+      if (commitSha && !forceRefresh) {
         const cached = await findAnalysis(repoUrl, commitSha).catch(() => null);
         if (cached) {
           const body: ApiResponse<AnalyzeResponseData> = {
@@ -87,6 +88,7 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
         submittedAt,
         commitSha,
         ...(githubToken ? { githubToken } : {}),
+        ...(forceRefresh ? { forceRefresh: true } : {}),
       });
 
       const body: ApiResponse<AnalyzeResponseData> = {
