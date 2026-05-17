@@ -54,5 +54,15 @@
   "git-hygiene": {
     "single-author":    { "impact": 3, "likelihood": 4 },
     "no-gitignore":     { "impact": 3, "likelihood": 3 }
+  },
+  "github-actions": {
+    "pull-request-target":  { "impact": 5, "likelihood": 4 },
+    "script-injection":     { "impact": 5, "likelihood": 4 },
+    "write-all-permissions": { "impact": 4, "likelihood": 3 },
+    "missing-permissions":  { "impact": 4, "likelihood": 3 },
+    "unpinned-action":      { "impact": 4, "likelihood": 3 },
+    "self-hosted-runner":   { "impact": 3, "likelihood": 3 },
+    "repeated-failure":     { "impact": 4, "likelihood": 4 },
+    "job-run-error":        { "impact": 3, "likelihood": 3 }
   }
 }

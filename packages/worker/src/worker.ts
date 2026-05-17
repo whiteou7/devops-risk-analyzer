@@ -9,6 +9,7 @@ import {
   hadolintFindingsToRiskItems,
   checkovFindingsToRiskItems,
   gitHygieneToRiskItems,
+  githubActionsToRiskItems,
   buildRiskMatrix,
 } from '@devops-risk-analyzer/shared';
 import { findAnalysis, saveAnalysis } from '@devops-risk-analyzer/db';
@@ -21,6 +22,7 @@ import { runGitleaks } from './steps/runGitleaks.js';
 import { runHadolint } from './steps/runHadolint.js';
 import { runCheckov } from './steps/runCheckov.js';
 import { analyzeGitHygiene } from './steps/analyzeGitHygiene.js';
+import { analyzeGithubActions } from './steps/analyzeGithubActions.js';
 import { cleanup } from './cleanup.js';
 import { redis } from './redis.js';
 
@@ -82,12 +84,15 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
               ? runCheckov(repoDir).catch(e => { console.warn('[checkov] error:', e.message); return null; })
               : Promise.resolve(null),
             analyzeGitHygiene(repoDir).catch(e => { console.warn('[git-hygiene] error:', e.message); return null; }),
+            process.env['SKIP_GITHUB_ACTIONS'] !== 'true'
+              ? analyzeGithubActions(repoDir, repoUrl, githubToken).catch(e => { console.warn('[github-actions] error:', e.message); return null; })
+              : Promise.resolve(null),
           ]),
         ]);
 
         await job.updateProgress(85);
 
-        const [trivyResult, gitleaksResult, hadolintResult, checkovResult, gitHygieneResult] = opsResults;
+        const [trivyResult, gitleaksResult, hadolintResult, checkovResult, gitHygieneResult, githubActionsResult] = opsResults;
 
         // Build OpsAnalysis (raw tool outputs)
         const opsAnalysis: OpsAnalysis = {
@@ -101,6 +106,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
             hasGitignore: true,
             topContributorCommitShare: 1,
           },
+          githubActions: githubActionsResult ?? { workflowCount: 0, findings: [] },
         };
 
         // Map all findings to RiskItems and build the risk matrix
@@ -111,6 +117,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
           ...hadolintFindingsToRiskItems(opsAnalysis.hadolint.findings),
           ...checkovFindingsToRiskItems(opsAnalysis.checkov.findings),
           ...gitHygieneToRiskItems(opsAnalysis.gitHygiene),
+          ...githubActionsToRiskItems(opsAnalysis.githubActions.findings),
         ];
 
         const riskMatrix = buildRiskMatrix(devItems, opsItems);

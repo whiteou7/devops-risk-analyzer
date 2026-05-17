@@ -7,6 +7,7 @@ import type {
   HadolintFinding,
   CheckovFinding,
   GitHygieneMetrics,
+  GithubActionsFinding,
   RiskItem,
   RiskGrade,
   RiskPhase,
@@ -28,6 +29,7 @@ interface RiskMappings {
   hadolint: Record<string, ImpactLikelihood>;
   checkov: Record<string, ImpactLikelihood>;
   'git-hygiene': Record<string, ImpactLikelihood>;
+  'github-actions': Record<string, ImpactLikelihood>;
 }
 
 function loadMappings(): RiskMappings {
@@ -231,6 +233,30 @@ export function gitHygieneToRiskItems(metrics: GitHygieneMetrics): RiskItem[] {
   }
 
   return items;
+}
+
+// ---------------------------------------------------------------------------
+// GitHub Actions → RiskItem[]
+// ---------------------------------------------------------------------------
+
+export function githubActionsToRiskItems(findings: GithubActionsFinding[]): RiskItem[] {
+  const mappings = getMappings();
+  return findings.map((f, i) => {
+    const il = mappings['github-actions'][f.rule] ?? mappings['github-actions']['unpinned-action'];
+    const riskLevel = il.impact * il.likelihood;
+    return {
+      id: makeId('github-actions', i, f.rule),
+      source: 'github-actions' as const,
+      phase: 'OPS' as RiskPhase,
+      title: `GitHub Actions: ${f.rule}`,
+      detail: f.message,
+      file: f.file,
+      likelihood: il.likelihood,
+      impact: il.impact,
+      riskLevel,
+      riskGrade: riskLevelToGrade(riskLevel),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

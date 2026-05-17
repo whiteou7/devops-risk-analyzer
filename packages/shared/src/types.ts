@@ -103,6 +103,13 @@ export interface GitHygieneMetrics {
   topContributorCommitShare: number; // 0-1, ratio of commits by top author
 }
 
+export interface GithubActionsFinding {
+  rule: 'unpinned-action' | 'pull-request-target' | 'script-injection' | 'self-hosted-runner' | 'missing-permissions' | 'write-all-permissions' | 'job-run-error' | 'repeated-failure';
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  file: string;
+  message: string;
+}
+
 export interface OpsAnalysis {
   trivy: {
     critical: number;
@@ -126,6 +133,10 @@ export interface OpsAnalysis {
     findings: CheckovFinding[];
   };
   gitHygiene: GitHygieneMetrics;
+  githubActions: {
+    workflowCount: number;
+    findings: GithubActionsFinding[];
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +145,7 @@ export interface OpsAnalysis {
 
 export type RiskPhase = 'DEV' | 'OPS';
 export type RiskGrade = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-export type RiskSource = 'sonarqube' | 'trivy' | 'gitleaks' | 'hadolint' | 'checkov' | 'git-hygiene';
+export type RiskSource = 'sonarqube' | 'trivy' | 'gitleaks' | 'hadolint' | 'checkov' | 'git-hygiene' | 'github-actions';
 
 export interface RiskItem {
   id: string;
