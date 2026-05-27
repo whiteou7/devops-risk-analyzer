@@ -23,6 +23,7 @@ import { runHadolint } from './steps/runHadolint.js';
 import { runCheckov } from './steps/runCheckov.js';
 import { analyzeGitHygiene } from './steps/analyzeGitHygiene.js';
 import { analyzeGithubActions } from './steps/analyzeGithubActions.js';
+import { fetchEpssScores } from './steps/fetchEpssScores.js';
 import { cleanup } from './cleanup.js';
 import { redis } from './redis.js';
 
@@ -106,11 +107,25 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
           return result.value;
         }
 
-        const trivyResult      = settled(trivySettled,        'trivy');
+        let trivyResult        = settled(trivySettled,        'trivy');
         const gitleaksResult   = settled(gitleaksSettled,     'gitleaks');
         const hadolintResult   = settled(hadolintSettled,     'hadolint');
         const checkovResult    = settled(checkovSettled,      'checkov');
         const gitHygieneResult = settled(gitHygieneSettled,   'git-hygiene');
+
+        // Enrich Trivy findings with EPSS exploitation-probability scores
+        if (trivyResult && trivyResult.findings.length > 0) {
+          await job.log('Fetching EPSS scores for CVEs');
+          const cveIds = trivyResult.findings.map(f => f.cveId).filter((id): id is string => !!id);
+          const epssMap = await fetchEpssScores(cveIds);
+          trivyResult = {
+            ...trivyResult,
+            findings: trivyResult.findings.map(f => ({
+              ...f,
+              epssScore: f.cveId ? epssMap.get(f.cveId.toUpperCase()) : undefined,
+            })),
+          };
+        }
         const githubActionsResult = settled(githubActionsSettled, 'github-actions');
 
         // Build OpsAnalysis (raw tool outputs)

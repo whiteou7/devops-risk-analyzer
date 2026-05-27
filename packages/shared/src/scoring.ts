@@ -106,20 +106,108 @@ export function sonarIssuesToRiskItems(issues: SonarIssue[]): RiskItem[] {
 }
 
 // ---------------------------------------------------------------------------
+// CVE scoring helpers — CVSS (impact) × EPSS (likelihood) with phase weights
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-resource-type phase weights. For each phase the finding appears in:
+ *   finalLikelihood = clamp(round(baseLikelihood × likelihoodWeight), 1, 5)
+ *   finalImpact     = clamp(round(baseImpact     × impactWeight),     1, 5)
+ *
+ * Example: base likelihood 2, operate weight 1.5 → operate likelihood 3.
+ */
+const CVE_PHASE_WEIGHTS: Record<string, Record<string, { likelihood: number; impact: number }>> = {
+  LIBRARY: {
+    code:    { likelihood: 1.0, impact: 0.8 },
+    build:   { likelihood: 1.2, impact: 1.0 },
+    operate: { likelihood: 1.5, impact: 1.2 },
+  },
+  DOCKERFILE: {
+    build:  { likelihood: 1.3, impact: 1.0 },
+    deploy: { likelihood: 1.5, impact: 1.2 },
+  },
+  IAC: {
+    release: { likelihood: 1.0, impact: 0.8 },
+    deploy:  { likelihood: 1.3, impact: 1.0 },
+    operate: { likelihood: 1.5, impact: 1.2 },
+  },
+};
+
+function cvssToImpact(score: number): number {
+  if (score >= 9.0) return 5;
+  if (score >= 7.0) return 4;
+  if (score >= 4.0) return 3;
+  if (score >= 0.1) return 2;
+  return 1;
+}
+
+function epssToLikelihood(score: number): number {
+  if (score > 0.70) return 5;
+  if (score > 0.40) return 4;
+  if (score > 0.20) return 3;
+  if (score > 0.05) return 2;
+  return 1;
+}
+
+function clamp1to5(v: number): number {
+  return Math.min(5, Math.max(1, Math.round(v)));
+}
+
+function buildCvePhaseMappings(
+  f: TrivyFinding,
+  baseImpact: number,
+  baseLikelihood: number,
+): PhaseMapping[] {
+  const weights = CVE_PHASE_WEIGHTS[f.resourceType] ?? {};
+  return Object.entries(weights).map(([phase, w]) => {
+    const impact     = clamp1to5(baseImpact     * w.impact);
+    const likelihood = clamp1to5(baseLikelihood * w.likelihood);
+    const riskLevel  = impact * likelihood;
+    return { phase: phase as RiskPhase, impact, likelihood, riskLevel, riskGrade: riskLevelToGrade(riskLevel) };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Trivy → RiskItem[]
 // ---------------------------------------------------------------------------
 
 export function trivyFindingsToRiskItems(findings: TrivyFinding[]): RiskItem[] {
   const mappings = getMappings();
   return findings.map((f, i) => {
-    // Key combines severity + resourceType for precise phase routing
-    const key = `${f.severity}_${f.resourceType}`;
-    const fallbackKey = `UNKNOWN_${f.resourceType}`;
-    const entry = mappings.trivy[key] ?? mappings.trivy[fallbackKey] ?? mappings.trivy['UNKNOWN_LIBRARY'];
+    // When both CVSS and EPSS are available, derive impact/likelihood from data.
+    // Otherwise fall back to the static severity-based mapping.
+    let phases: PhaseMapping[];
+    if (f.cvssScore !== undefined && f.epssScore !== undefined) {
+      const baseImpact     = cvssToImpact(f.cvssScore);
+      const baseLikelihood = epssToLikelihood(f.epssScore);
+      phases = buildCvePhaseMappings(f, baseImpact, baseLikelihood);
+    } else if (f.cvssScore !== undefined) {
+      // CVSS available but EPSS missing — derive impact from CVSS, likelihood from severity mapping
+      const key = `${f.severity}_${f.resourceType}`;
+      const entry = mappings.trivy[key] ?? mappings.trivy[`UNKNOWN_${f.resourceType}`] ?? mappings.trivy['UNKNOWN_LIBRARY'];
+      const baseImpact = cvssToImpact(f.cvssScore);
+      // Use the static mapping's likelihood as the base, then apply phase weights
+      const weights = CVE_PHASE_WEIGHTS[f.resourceType] ?? {};
+      phases = Object.entries(weights).map(([phase, w]) => {
+        const staticPhaseIl = entry.phases[phase];
+        const baseLikelihood = staticPhaseIl?.likelihood ?? 2;
+        const impact     = clamp1to5(baseImpact     * w.impact);
+        const likelihood = clamp1to5(baseLikelihood * w.likelihood);
+        const riskLevel  = impact * likelihood;
+        return { phase: phase as RiskPhase, impact, likelihood, riskLevel, riskGrade: riskLevelToGrade(riskLevel) };
+      });
+    } else {
+      // No CVSS or EPSS — fall back to static mapping unchanged
+      const key = `${f.severity}_${f.resourceType}`;
+      const fallbackKey = `UNKNOWN_${f.resourceType}`;
+      const entry = mappings.trivy[key] ?? mappings.trivy[fallbackKey] ?? mappings.trivy['UNKNOWN_LIBRARY'];
+      phases = buildPhaseMappings(entry);
+    }
+
     return {
       id: makeId('trivy', i, f.cveId),
       source: 'trivy' as const,
-      phases: buildPhaseMappings(entry),
+      phases,
       title: f.cveId ? `${f.cveId} in ${f.packageName}` : `CVE in ${f.packageName}`,
       detail: f.title,
     };

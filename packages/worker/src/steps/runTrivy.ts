@@ -9,6 +9,11 @@ interface TrivyResult {
   findings: TrivyFinding[];
 }
 
+interface TrivyJsonCvssEntry {
+  V3Score?: number;
+  V2Score?: number;
+}
+
 interface TrivyJsonVuln {
   VulnerabilityID?: string;
   Severity?: string;
@@ -16,6 +21,7 @@ interface TrivyJsonVuln {
   InstalledVersion?: string;
   FixedVersion?: string;
   Title?: string;
+  CVSS?: Record<string, TrivyJsonCvssEntry>;
 }
 
 interface TrivyJsonMisconfig {
@@ -32,6 +38,19 @@ interface TrivyJsonResult {
 
 interface TrivyJsonOutput {
   Results?: TrivyJsonResult[];
+}
+
+function extractCvssScore(cvss: Record<string, TrivyJsonCvssEntry> | undefined): number | undefined {
+  if (!cvss) return undefined;
+  // Prefer NVD V3, then any provider's V3, then V2
+  for (const provider of ['nvd', ...Object.keys(cvss)]) {
+    const entry = cvss[provider];
+    if (entry?.V3Score !== undefined) return entry.V3Score;
+  }
+  for (const entry of Object.values(cvss)) {
+    if (entry?.V2Score !== undefined) return entry.V2Score;
+  }
+  return undefined;
 }
 
 function mapSeverity(s: string | undefined): TrivyFinding['severity'] {
@@ -87,6 +106,7 @@ function extractFindings(parsed: TrivyJsonOutput): TrivyResult {
         fixedVersion: v.FixedVersion,
         title: v.Title ?? v.VulnerabilityID ?? 'Vulnerability',
         resourceType: 'LIBRARY',
+        cvssScore: extractCvssScore(v.CVSS),
       });
     }
     for (const m of res.Misconfigurations ?? []) {

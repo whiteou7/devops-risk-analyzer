@@ -72,6 +72,10 @@ export interface TrivyFinding {
   fixedVersion?: string;
   title: string;
   resourceType: 'LIBRARY' | 'DOCKERFILE' | 'IAC';
+  /** CVSS base score (0–10) extracted from Trivy output; used for impact calculation. */
+  cvssScore?: number;
+  /** EPSS probability (0–1) fetched from api.first.org; used for likelihood calculation. */
+  epssScore?: number;
 }
 
 export interface SecretFinding {
