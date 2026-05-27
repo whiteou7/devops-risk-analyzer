@@ -13,7 +13,6 @@ import type {
   RiskPhase,
   PhaseMapping,
   PhaseScore,
-  RiskCorrelation,
   RiskMatrix,
 } from './types.js';
 import { ALL_PHASES } from './types.js';
@@ -358,55 +357,6 @@ export function aggregatePhaseScore(items: RiskItem[], phase: RiskPhase): PhaseS
 }
 
 // ---------------------------------------------------------------------------
-// Correlation detection
-// ---------------------------------------------------------------------------
-
-export function detectCorrelations(items: RiskItem[]): RiskCorrelation[] {
-  const correlations: RiskCorrelation[] = [];
-
-  const sonarVulnItems = items.filter(i => i.source === 'sonarqube' && i.title.includes('VULNERABILITY'));
-  const trivyItems = items.filter(i => i.source === 'trivy');
-  if (sonarVulnItems.length > 0 && trivyItems.length > 0) {
-    correlations.push({
-      type: 'VULN_AND_CVE',
-      message: `${sonarVulnItems.length} SonarQube vulnerability finding(s) and ${trivyItems.length} Trivy CVE(s) detected — review overlapping dependencies`,
-      severity: 'HIGH',
-      itemIds: [...sonarVulnItems.map(i => i.id), ...trivyItems.map(i => i.id)],
-      affectedPhases: ['code', 'operate'],
-    });
-  }
-
-  const secretItems = items.filter(i => i.source === 'gitleaks');
-  const criticalCodeItems = items.filter(i =>
-    i.source === 'sonarqube' &&
-    i.phases.some(p => p.riskGrade === 'CRITICAL' || p.riskGrade === 'HIGH'),
-  );
-  if (secretItems.length > 0 && criticalCodeItems.length > 0) {
-    correlations.push({
-      type: 'SECRET_WITH_HIGH_BUG_DENSITY',
-      message: `Exposed secrets combined with ${criticalCodeItems.length} high/critical code issue(s) significantly elevates attack surface`,
-      severity: 'CRITICAL',
-      itemIds: [...secretItems.map(i => i.id), ...criticalCodeItems.map(i => i.id)],
-      affectedPhases: ['code', 'operate'],
-    });
-  }
-
-  const checkovItems = items.filter(i => i.source === 'checkov');
-  const hadolintItems = items.filter(i => i.source === 'hadolint');
-  if (checkovItems.length > 0 && hadolintItems.length > 0) {
-    correlations.push({
-      type: 'IAC_AND_DOCKERFILE_ISSUES',
-      message: `${checkovItems.length} IaC misconfiguration(s) and ${hadolintItems.length} Dockerfile issue(s) suggest deployment hardening is needed`,
-      severity: 'MEDIUM',
-      itemIds: [...checkovItems.map(i => i.id), ...hadolintItems.map(i => i.id)],
-      affectedPhases: ['build', 'release', 'deploy', 'operate'],
-    });
-  }
-
-  return correlations;
-}
-
-// ---------------------------------------------------------------------------
 // Build complete RiskMatrix
 // ---------------------------------------------------------------------------
 
@@ -418,6 +368,5 @@ export function buildRiskMatrix(allItems: RiskItem[]): RiskMatrix {
   return {
     items: allItems,
     phaseScores,
-    correlations: detectCorrelations(allItems),
   };
 }

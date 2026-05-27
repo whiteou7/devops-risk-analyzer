@@ -183,18 +183,9 @@ export interface PhaseScore {
   breakdown: { grade: RiskGrade; count: number }[];
 }
 
-export interface RiskCorrelation {
-  type: string;
-  message: string;
-  severity: RiskGrade;
-  itemIds: string[];
-  affectedPhases: RiskPhase[];
-}
-
 export interface RiskMatrix {
   items: RiskItem[];
   phaseScores: Record<RiskPhase, PhaseScore>;
-  correlations: RiskCorrelation[];
 }
 
 // ---------------------------------------------------------------------------

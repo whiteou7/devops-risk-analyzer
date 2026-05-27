@@ -44,14 +44,7 @@ onMounted(async () => {
 });
 
 const matrix = computed(() => store.result?.riskMatrix ?? null);
-const correlations = computed(() => matrix.value?.correlations ?? []);
 
-const correlationClass: Record<string, string> = {
-  CRITICAL: 'border-red-800 bg-red-950/30 text-red-300',
-  HIGH:     'border-orange-800 bg-orange-950/30 text-orange-300',
-  MEDIUM:   'border-yellow-800 bg-yellow-950/30 text-yellow-300',
-  LOW:      'border-green-800 bg-green-950/30 text-green-300',
-};
 </script>
 
 <template>
@@ -112,23 +105,6 @@ const correlationClass: Record<string, string> = {
           <p class="text-xs text-slate-600">
             X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical) · Showing findings relevant to the <span class="capitalize text-slate-500">{{ activePhase }}</span> phase
           </p>
-        </div>
-      </div>
-
-      <!-- Correlations -->
-      <div v-if="correlations.length > 0" class="space-y-3">
-        <h3 class="text-lg font-semibold text-white">Cross-Phase Correlations</h3>
-        <div
-          v-for="c in correlations"
-          :key="c.type"
-          class="border rounded-lg px-4 py-3 text-sm"
-          :class="correlationClass[c.severity]"
-        >
-          <span class="font-semibold mr-2">{{ c.severity }}</span>
-          {{ c.message }}
-          <span v-if="c.affectedPhases.length" class="ml-2 text-xs opacity-70">
-            ({{ c.affectedPhases.join(' → ') }})
-          </span>
         </div>
       </div>
 
