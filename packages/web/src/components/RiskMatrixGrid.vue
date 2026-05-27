@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { RiskItem, RiskPhase } from '@devops-risk-analyzer/shared';
+import type { RiskItem, RiskPhase, RiskSource } from '@devops-risk-analyzer/shared';
 
 const props = defineProps<{
   items: RiskItem[];
-  phaseFilter: RiskPhase | 'ALL';
+  phase: RiskPhase;
 }>();
 
 // Grid config
@@ -23,26 +23,28 @@ function cellColor(likelihood: number, impact: number): string {
   return '#14532d';                  // green-900
 }
 
-// Filtered items
-const filtered = computed(() =>
-  props.phaseFilter === 'ALL'
-    ? props.items
-    : props.items.filter(i => i.phase === props.phaseFilter),
+// Items that participate in the currently selected phase, keyed with their phase-specific scores
+const phaseItems = computed(() =>
+  props.items.flatMap(item => {
+    const pm = item.phases.find(p => p.phase === props.phase);
+    if (!pm) return [];
+    return [{ item, likelihood: pm.likelihood, impact: pm.impact, riskGrade: pm.riskGrade }];
+  }),
 );
 
 // Group items by (likelihood, impact) cell
 const cellItems = computed(() => {
-  const map = new Map<string, RiskItem[]>();
-  for (const item of filtered.value) {
-    const key = `${item.likelihood}-${item.impact}`;
+  const map = new Map<string, typeof phaseItems.value>();
+  for (const entry of phaseItems.value) {
+    const key = `${entry.likelihood}-${entry.impact}`;
     if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(item);
+    map.get(key)!.push(entry);
   }
   return map;
 });
 
 // Tooltip state
-const tooltip = ref<{ x: number; y: number; items: RiskItem[] } | null>(null);
+const tooltip = ref<{ x: number; y: number; item: RiskItem; riskGrade: string } | null>(null);
 
 function cellX(likelihood: number): number {
   return PAD + (likelihood - 1) * CELL;
@@ -52,32 +54,43 @@ function cellY(impact: number): number {
   return (SIZE - impact) * CELL;
 }
 
-function showTooltip(event: MouseEvent, items: RiskItem[]): void {
-  tooltip.value = { x: (event.target as SVGElement).getBoundingClientRect().left + 40, y: (event.target as SVGElement).getBoundingClientRect().top - 8, items };
+function showTooltip(event: MouseEvent, item: RiskItem, riskGrade: string): void {
+  const rect = (event.target as SVGElement).getBoundingClientRect();
+  tooltip.value = { x: rect.left + 40, y: rect.top - 8, item, riskGrade };
 }
 function hideTooltip(): void {
   tooltip.value = null;
 }
 
 // Dot positions — stack items in a cell as small circles
-function dotsForCell(likelihood: number, impact: number): { cx: number; cy: number; item: RiskItem }[] {
-  const items = cellItems.value.get(`${likelihood}-${impact}`) ?? [];
+function dotsForCell(likelihood: number, impact: number) {
+  const entries = cellItems.value.get(`${likelihood}-${impact}`) ?? [];
   const cx0 = cellX(likelihood) + CELL / 2;
   const cy0 = cellY(impact) + CELL / 2;
-  const cols = Math.ceil(Math.sqrt(items.length));
-  return items.map((item, i) => ({
-    item,
+  const cols = Math.ceil(Math.sqrt(entries.length));
+  return entries.map((entry, i) => ({
+    ...entry,
     cx: cx0 + ((i % cols) - (cols - 1) / 2) * 14,
-    cy: cy0 + (Math.floor(i / cols) - (Math.ceil(items.length / cols) - 1) / 2) * 14,
+    cy: cy0 + (Math.floor(i / cols) - (Math.ceil(entries.length / cols) - 1) / 2) * 14,
   }));
 }
 
-function dotColor(phase: RiskPhase): string {
-  return phase === 'DEV' ? '#3b82f6' : '#f97316'; // blue-500 : orange-500
+const SOURCE_COLORS: Record<RiskSource, string> = {
+  'sonarqube':      '#3b82f6', // blue-500
+  'trivy':          '#f97316', // orange-500
+  'gitleaks':       '#ef4444', // red-500
+  'hadolint':       '#eab308', // yellow-500
+  'checkov':        '#a855f7', // purple-500
+  'git-hygiene':    '#14b8a6', // teal-500
+  'github-actions': '#22c55e', // green-500
+};
+
+function dotColor(source: RiskSource): string {
+  return SOURCE_COLORS[source] ?? '#94a3b8';
 }
 
 const allDots = computed(() => {
-  const dots: { cx: number; cy: number; item: RiskItem }[] = [];
+  const dots: ReturnType<typeof dotsForCell>[number][] = [];
   for (let l = 1; l <= 5; l++) {
     for (let im = 1; im <= 5; im++) {
       dots.push(...dotsForCell(l, im));
@@ -85,6 +98,15 @@ const allDots = computed(() => {
   }
   return dots;
 });
+
+function gradeClass(grade: string): string {
+  return ({
+    CRITICAL: 'text-red-400 font-semibold',
+    HIGH:     'text-orange-400 font-semibold',
+    MEDIUM:   'text-yellow-400',
+    LOW:      'text-green-400',
+  } as Record<string, string>)[grade] ?? 'text-slate-300';
+}
 </script>
 
 <template>
@@ -155,16 +177,16 @@ const allDots = computed(() => {
         <text :x="cellX(4) - PAD + 4" :y="cellY(1) + 14" fill="#64748b" font-size="10">High L / Low I</text>
 
         <!-- Risk item dots -->
-        <template v-for="dot in allDots" :key="dot.item.id">
+        <template v-for="dot in allDots" :key="`${dot.item.id}-${phase}`">
           <circle
             :cx="dot.cx - PAD"
             :cy="dot.cy"
             r="6"
-            :fill="dotColor(dot.item.phase)"
+            :fill="dotColor(dot.item.source)"
             stroke="#0f172a"
             stroke-width="1.5"
             class="cursor-pointer hover:opacity-80 transition-opacity"
-            @mouseenter="showTooltip($event, [dot.item])"
+            @mouseenter="showTooltip($event, dot.item, dot.riskGrade)"
             @mouseleave="hideTooltip"
           />
         </template>
@@ -172,12 +194,10 @@ const allDots = computed(() => {
     </svg>
 
     <!-- Legend -->
-    <div class="flex gap-4 mt-2 text-xs text-slate-400">
-      <span class="flex items-center gap-1.5">
-        <span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> Dev phase
-      </span>
-      <span class="flex items-center gap-1.5">
-        <span class="inline-block w-3 h-3 rounded-full bg-orange-500"></span> Ops phase
+    <div class="flex flex-wrap gap-3 mt-2 text-xs text-slate-400">
+      <span v-for="[src, color] in Object.entries(SOURCE_COLORS)" :key="src" class="flex items-center gap-1.5">
+        <span class="inline-block w-3 h-3 rounded-full" :style="{ background: color }"></span>
+        {{ src }}
       </span>
     </div>
 
@@ -188,28 +208,22 @@ const allDots = computed(() => {
         class="fixed z-50 bg-slate-800 border border-slate-700 rounded-lg p-3 shadow-xl text-sm max-w-xs pointer-events-none"
         :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px`, transform: 'translateY(-100%)' }"
       >
-        <template v-for="item in tooltip.items" :key="item.id">
-          <div class="space-y-0.5">
-            <div class="font-semibold text-white">{{ item.title }}</div>
-            <div class="text-slate-400 text-xs">{{ item.detail }}</div>
-            <div class="flex gap-2 text-xs mt-1">
-              <span class="text-slate-500">Phase: <span class="text-slate-300">{{ item.phase }}</span></span>
-              <span class="text-slate-500">Risk: <span :class="gradeClass(item.riskGrade)">{{ item.riskGrade }}</span></span>
-            </div>
+        <div class="space-y-1">
+          <div class="font-semibold text-white">{{ tooltip.item.title }}</div>
+          <div class="text-slate-400 text-xs">{{ tooltip.item.detail }}</div>
+          <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs mt-1">
+            <span class="text-slate-500">Risk in <span class="text-slate-300 capitalize">{{ phase }}</span>:
+              <span :class="gradeClass(tooltip.riskGrade)"> {{ tooltip.riskGrade }}</span>
+            </span>
           </div>
-        </template>
+          <div class="text-xs text-slate-500 mt-1">
+            Also affects:
+            <span class="text-slate-400">
+              {{ tooltip.item.phases.filter(p => p.phase !== phase).map(p => p.phase).join(', ') || 'none' }}
+            </span>
+          </div>
+        </div>
       </div>
     </Teleport>
   </div>
 </template>
-
-<script lang="ts">
-function gradeClass(grade: string): string {
-  return {
-    CRITICAL: 'text-red-400 font-semibold',
-    HIGH:     'text-orange-400 font-semibold',
-    MEDIUM:   'text-yellow-400',
-    LOW:      'text-green-400',
-  }[grade] ?? 'text-slate-300';
-}
-</script>

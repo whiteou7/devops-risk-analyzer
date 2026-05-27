@@ -9,9 +9,11 @@ import RiskSummaryCard from '../components/RiskSummaryCard.vue';
 import IssueTable from '../components/IssueTable.vue';
 import type { RiskPhase } from '@devops-risk-analyzer/shared';
 
+const ALL_PHASES: RiskPhase[] = ['plan', 'code', 'build', 'test', 'release', 'deploy', 'operate', 'monitor'];
+
 const props = defineProps<{ jobId: string }>();
 const store = useJobStore();
-const phaseFilter = ref<RiskPhase | 'ALL'>('ALL');
+const activePhase = ref<RiskPhase>('code');
 
 // Bootstrap: if store has no job set (e.g. direct URL navigation), poll once then stream
 onMounted(async () => {
@@ -90,53 +92,62 @@ const correlationClass: Record<string, string> = {
 
     <!-- Results -->
     <template v-if="store.status === 'completed' && matrix">
-      <!-- Phase score cards -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <RiskSummaryCard :phase="matrix.devPhase" />
-        <RiskSummaryCard :phase="matrix.opsPhase" />
+      <!-- Phase score cards — all 8 pipeline phases -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <RiskSummaryCard
+          v-for="phase in ALL_PHASES"
+          :key="phase"
+          :phase="matrix.phaseScores[phase]"
+        />
       </div>
 
-      <!-- Risk matrix -->
+      <!-- Phase selector + Risk matrix -->
       <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <div class="flex items-center justify-between flex-wrap gap-3">
           <h3 class="text-lg font-semibold text-white">Risk Matrix</h3>
-          <div class="flex gap-2">
+          <div class="flex flex-wrap gap-1.5">
             <button
-              v-for="f in ['ALL', 'DEV', 'OPS'] as const"
-              :key="f"
-              class="px-3 py-1 rounded-full text-xs font-medium transition-colors"
-              :class="phaseFilter === f
+              v-for="phase in ALL_PHASES"
+              :key="phase"
+              class="px-3 py-1 rounded-full text-xs font-medium capitalize transition-colors"
+              :class="activePhase === phase
                 ? 'bg-blue-600 text-white'
                 : 'bg-slate-800 text-slate-400 hover:text-white'"
-              @click="phaseFilter = f"
-            >{{ f }}</button>
+              @click="activePhase = phase"
+            >{{ phase }}</button>
           </div>
         </div>
         <div class="overflow-x-auto">
-          <RiskMatrixGrid :items="matrix.items" :phase-filter="phaseFilter" />
+          <RiskMatrixGrid :items="matrix.items" :phase="activePhase" />
         </div>
         <p class="text-xs text-slate-600">
-          X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical)
+          X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical) · Showing findings relevant to the <span class="capitalize text-slate-500">{{ activePhase }}</span> phase
         </p>
       </div>
 
       <!-- Correlations -->
       <div v-if="correlations.length > 0" class="space-y-3">
-        <h3 class="text-lg font-semibold text-white">Dev ↔ Ops Correlations</h3>
+        <h3 class="text-lg font-semibold text-white">Cross-Phase Correlations</h3>
         <div
           v-for="c in correlations"
           :key="c.type"
           class="border rounded-lg px-4 py-3 text-sm"
           :class="correlationClass[c.severity]"
         >
-          <span class="font-semibold mr-2">{{ c.severity }}</span>{{ c.message }}
+          <span class="font-semibold mr-2">{{ c.severity }}</span>
+          {{ c.message }}
+          <span v-if="c.affectedPhases.length" class="ml-2 text-xs opacity-70">
+            ({{ c.affectedPhases.join(' → ') }})
+          </span>
         </div>
       </div>
 
-      <!-- Issue table -->
+      <!-- Issue table scoped to active phase -->
       <div class="space-y-3">
-        <h3 class="text-lg font-semibold text-white">All Findings</h3>
-        <IssueTable :items="matrix.items" />
+        <h3 class="text-lg font-semibold text-white">
+          Findings — <span class="capitalize text-blue-400">{{ activePhase }}</span> phase
+        </h3>
+        <IssueTable :items="matrix.items" :phase="activePhase" />
       </div>
 
       <!-- SonarQube link -->

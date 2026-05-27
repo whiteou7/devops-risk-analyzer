@@ -1,68 +1,78 @@
 {
   "sonarqube": {
     "BUG": {
-      "BLOCKER":  { "impact": 5, "likelihood": 4 },
-      "CRITICAL": { "impact": 4, "likelihood": 3 },
-      "MAJOR":    { "impact": 3, "likelihood": 3 },
-      "MINOR":    { "impact": 2, "likelihood": 2 },
-      "INFO":     { "impact": 1, "likelihood": 1 }
+      "BLOCKER":  { "phases": { "code": { "impact": 5, "likelihood": 4 }, "test": { "impact": 4, "likelihood": 3 } } },
+      "CRITICAL": { "phases": { "code": { "impact": 4, "likelihood": 3 }, "test": { "impact": 3, "likelihood": 3 } } },
+      "MAJOR":    { "phases": { "code": { "impact": 3, "likelihood": 3 }, "test": { "impact": 2, "likelihood": 2 } } },
+      "MINOR":    { "phases": { "code": { "impact": 2, "likelihood": 2 }, "test": { "impact": 1, "likelihood": 2 } } },
+      "INFO":     { "phases": { "code": { "impact": 1, "likelihood": 1 } } }
     },
     "VULNERABILITY": {
-      "BLOCKER":  { "impact": 5, "likelihood": 5 },
-      "CRITICAL": { "impact": 5, "likelihood": 4 },
-      "MAJOR":    { "impact": 4, "likelihood": 3 },
-      "MINOR":    { "impact": 2, "likelihood": 2 },
-      "INFO":     { "impact": 1, "likelihood": 1 }
+      "BLOCKER":  { "phases": { "code": { "impact": 5, "likelihood": 5 }, "operate": { "impact": 5, "likelihood": 5 } } },
+      "CRITICAL": { "phases": { "code": { "impact": 5, "likelihood": 4 }, "operate": { "impact": 5, "likelihood": 4 } } },
+      "MAJOR":    { "phases": { "code": { "impact": 4, "likelihood": 3 }, "operate": { "impact": 3, "likelihood": 3 } } },
+      "MINOR":    { "phases": { "code": { "impact": 2, "likelihood": 2 }, "operate": { "impact": 2, "likelihood": 2 } } },
+      "INFO":     { "phases": { "code": { "impact": 1, "likelihood": 1 }, "operate": { "impact": 1, "likelihood": 1 } } }
     },
     "CODE_SMELL": {
-      "BLOCKER":  { "impact": 3, "likelihood": 4 },
-      "CRITICAL": { "impact": 2, "likelihood": 3 },
-      "MAJOR":    { "impact": 2, "likelihood": 2 },
-      "MINOR":    { "impact": 1, "likelihood": 2 },
-      "INFO":     { "impact": 1, "likelihood": 1 }
+      "BLOCKER":  { "phases": { "code": { "impact": 3, "likelihood": 4 } } },
+      "CRITICAL": { "phases": { "code": { "impact": 2, "likelihood": 3 } } },
+      "MAJOR":    { "phases": { "code": { "impact": 2, "likelihood": 2 } } },
+      "MINOR":    { "phases": { "code": { "impact": 1, "likelihood": 2 } } },
+      "INFO":     { "phases": { "code": { "impact": 1, "likelihood": 1 } } }
     }
   },
   "trivy": {
-    "CRITICAL": { "impact": 5, "likelihood": 5 },
-    "HIGH":     { "impact": 4, "likelihood": 4 },
-    "MEDIUM":   { "impact": 3, "likelihood": 3 },
-    "LOW":      { "impact": 2, "likelihood": 2 },
-    "UNKNOWN":  { "impact": 2, "likelihood": 2 }
+    "CRITICAL_LIBRARY":    { "phases": { "code": { "impact": 4, "likelihood": 4 }, "build": { "impact": 5, "likelihood": 5 }, "operate": { "impact": 5, "likelihood": 5 } } },
+    "HIGH_LIBRARY":        { "phases": { "code": { "impact": 3, "likelihood": 3 }, "build": { "impact": 4, "likelihood": 4 }, "operate": { "impact": 4, "likelihood": 4 } } },
+    "MEDIUM_LIBRARY":      { "phases": { "code": { "impact": 2, "likelihood": 3 }, "build": { "impact": 3, "likelihood": 3 }, "operate": { "impact": 3, "likelihood": 3 } } },
+    "LOW_LIBRARY":         { "phases": { "code": { "impact": 1, "likelihood": 2 }, "build": { "impact": 2, "likelihood": 2 }, "operate": { "impact": 2, "likelihood": 2 } } },
+    "UNKNOWN_LIBRARY":     { "phases": { "code": { "impact": 1, "likelihood": 2 }, "build": { "impact": 2, "likelihood": 2 }, "operate": { "impact": 2, "likelihood": 2 } } },
+    "CRITICAL_DOCKERFILE": { "phases": { "build": { "impact": 5, "likelihood": 5 }, "deploy": { "impact": 5, "likelihood": 5 } } },
+    "HIGH_DOCKERFILE":     { "phases": { "build": { "impact": 4, "likelihood": 4 }, "deploy": { "impact": 4, "likelihood": 4 } } },
+    "MEDIUM_DOCKERFILE":   { "phases": { "build": { "impact": 3, "likelihood": 3 }, "deploy": { "impact": 3, "likelihood": 3 } } },
+    "LOW_DOCKERFILE":      { "phases": { "build": { "impact": 2, "likelihood": 2 }, "deploy": { "impact": 2, "likelihood": 2 } } },
+    "UNKNOWN_DOCKERFILE":  { "phases": { "build": { "impact": 2, "likelihood": 2 }, "deploy": { "impact": 2, "likelihood": 2 } } },
+    "CRITICAL_IAC":        { "phases": { "release": { "impact": 4, "likelihood": 4 }, "deploy": { "impact": 5, "likelihood": 4 }, "operate": { "impact": 5, "likelihood": 5 } } },
+    "HIGH_IAC":            { "phases": { "release": { "impact": 3, "likelihood": 3 }, "deploy": { "impact": 4, "likelihood": 3 }, "operate": { "impact": 4, "likelihood": 4 } } },
+    "MEDIUM_IAC":          { "phases": { "release": { "impact": 2, "likelihood": 3 }, "deploy": { "impact": 3, "likelihood": 2 }, "operate": { "impact": 3, "likelihood": 3 } } },
+    "LOW_IAC":             { "phases": { "release": { "impact": 1, "likelihood": 2 }, "deploy": { "impact": 2, "likelihood": 2 }, "operate": { "impact": 2, "likelihood": 2 } } },
+    "UNKNOWN_IAC":         { "phases": { "release": { "impact": 1, "likelihood": 2 }, "deploy": { "impact": 2, "likelihood": 2 }, "operate": { "impact": 2, "likelihood": 2 } } }
   },
   "gitleaks": {
-    "default":              { "impact": 5, "likelihood": 5 },
-    "aws-access-token":     { "impact": 5, "likelihood": 5 },
-    "aws-secret-key":       { "impact": 5, "likelihood": 5 },
-    "github-pat":           { "impact": 4, "likelihood": 5 },
-    "generic-api-key":      { "impact": 4, "likelihood": 4 },
-    "private-key":          { "impact": 5, "likelihood": 4 },
-    "stripe-access-token":  { "impact": 5, "likelihood": 5 },
-    "slack-webhook":        { "impact": 3, "likelihood": 4 },
-    "password-in-url":      { "impact": 4, "likelihood": 5 }
+    "default":             { "phases": { "code": { "impact": 4, "likelihood": 5 }, "operate": { "impact": 5, "likelihood": 4 } } },
+    "aws-access-token":    { "phases": { "code": { "impact": 5, "likelihood": 5 }, "operate": { "impact": 5, "likelihood": 5 } } },
+    "aws-secret-key":      { "phases": { "code": { "impact": 5, "likelihood": 5 }, "operate": { "impact": 5, "likelihood": 5 } } },
+    "github-pat":          { "phases": { "code": { "impact": 4, "likelihood": 5 }, "operate": { "impact": 4, "likelihood": 5 } } },
+    "generic-api-key":     { "phases": { "code": { "impact": 3, "likelihood": 4 }, "operate": { "impact": 4, "likelihood": 4 } } },
+    "private-key":         { "phases": { "code": { "impact": 5, "likelihood": 4 }, "operate": { "impact": 5, "likelihood": 4 } } },
+    "stripe-access-token": { "phases": { "code": { "impact": 5, "likelihood": 5 }, "operate": { "impact": 5, "likelihood": 5 } } },
+    "slack-webhook":       { "phases": { "code": { "impact": 2, "likelihood": 4 }, "operate": { "impact": 3, "likelihood": 4 } } },
+    "password-in-url":     { "phases": { "code": { "impact": 4, "likelihood": 5 }, "operate": { "impact": 4, "likelihood": 5 } } }
   },
   "hadolint": {
-    "error":   { "impact": 3, "likelihood": 4 },
-    "warning": { "impact": 2, "likelihood": 3 },
-    "info":    { "impact": 1, "likelihood": 2 },
-    "style":   { "impact": 1, "likelihood": 1 }
+    "error":   { "phases": { "build": { "impact": 3, "likelihood": 4 }, "deploy": { "impact": 3, "likelihood": 3 } } },
+    "warning": { "phases": { "build": { "impact": 2, "likelihood": 3 }, "deploy": { "impact": 2, "likelihood": 2 } } },
+    "info":    { "phases": { "build": { "impact": 1, "likelihood": 2 } } },
+    "style":   { "phases": { "build": { "impact": 1, "likelihood": 1 } } }
   },
   "checkov": {
-    "HIGH":   { "impact": 4, "likelihood": 3 },
-    "MEDIUM": { "impact": 3, "likelihood": 2 },
-    "LOW":    { "impact": 2, "likelihood": 2 }
+    "HIGH":   { "phases": { "release": { "impact": 3, "likelihood": 3 }, "deploy": { "impact": 4, "likelihood": 3 }, "operate": { "impact": 4, "likelihood": 3 } } },
+    "MEDIUM": { "phases": { "release": { "impact": 2, "likelihood": 2 }, "deploy": { "impact": 3, "likelihood": 2 }, "operate": { "impact": 3, "likelihood": 2 } } },
+    "LOW":    { "phases": { "release": { "impact": 1, "likelihood": 2 }, "deploy": { "impact": 2, "likelihood": 2 }, "operate": { "impact": 2, "likelihood": 2 } } }
   },
   "git-hygiene": {
-    "single-author":    { "impact": 3, "likelihood": 4 },
-    "no-gitignore":     { "impact": 3, "likelihood": 3 }
+    "single-author": { "phases": { "plan": { "impact": 3, "likelihood": 4 }, "code": { "impact": 2, "likelihood": 3 } } },
+    "no-gitignore":  { "phases": { "plan": { "impact": 2, "likelihood": 3 }, "code": { "impact": 3, "likelihood": 3 } } }
   },
   "github-actions": {
-    "pull-request-target":  { "impact": 5, "likelihood": 4 },
-    "script-injection":     { "impact": 5, "likelihood": 4 },
-    "write-all-permissions": { "impact": 4, "likelihood": 3 },
-    "missing-permissions":  { "impact": 4, "likelihood": 3 },
-    "unpinned-action":      { "impact": 4, "likelihood": 3 },
-    "self-hosted-runner":   { "impact": 3, "likelihood": 3 },
-    "repeated-failure":     { "impact": 4, "likelihood": 4 },
-    "job-run-error":        { "impact": 3, "likelihood": 3 }
+    "pull-request-target":   { "phases": { "build": { "impact": 5, "likelihood": 4 }, "release": { "impact": 5, "likelihood": 4 } } },
+    "script-injection":      { "phases": { "build": { "impact": 5, "likelihood": 4 }, "release": { "impact": 5, "likelihood": 4 } } },
+    "write-all-permissions": { "phases": { "build": { "impact": 4, "likelihood": 3 }, "release": { "impact": 4, "likelihood": 3 } } },
+    "missing-permissions":   { "phases": { "build": { "impact": 4, "likelihood": 3 }, "release": { "impact": 4, "likelihood": 3 } } },
+    "unpinned-action":       { "phases": { "build": { "impact": 4, "likelihood": 3 }, "release": { "impact": 4, "likelihood": 3 } } },
+    "self-hosted-runner":    { "phases": { "build": { "impact": 3, "likelihood": 3 } } },
+    "repeated-failure":      { "phases": { "monitor": { "impact": 4, "likelihood": 4 } } },
+    "job-run-error":         { "phases": { "monitor": { "impact": 3, "likelihood": 3 } } }
   }
 }

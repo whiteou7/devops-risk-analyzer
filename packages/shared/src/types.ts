@@ -145,22 +145,30 @@ export interface OpsAnalysis {
 // Risk matrix — impact × likelihood model
 // ---------------------------------------------------------------------------
 
-export type RiskPhase = 'DEV' | 'OPS';
+export type RiskPhase = 'plan' | 'code' | 'build' | 'test' | 'release' | 'deploy' | 'operate' | 'monitor';
 export type RiskGrade = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type RiskSource = 'sonarqube' | 'trivy' | 'gitleaks' | 'hadolint' | 'checkov' | 'git-hygiene' | 'github-actions';
+
+export const ALL_PHASES: RiskPhase[] = ['plan', 'code', 'build', 'test', 'release', 'deploy', 'operate', 'monitor'];
+
+/** Per-phase independent risk score for a single finding. */
+export interface PhaseMapping {
+  phase: RiskPhase;
+  impact: number;      // 1-5
+  likelihood: number;  // 1-5
+  riskLevel: number;   // impact × likelihood (1-25)
+  riskGrade: RiskGrade;
+}
 
 export interface RiskItem {
   id: string;
   source: RiskSource;
-  phase: RiskPhase;
+  /** One entry per pipeline phase this finding affects, each with independent scoring. */
+  phases: PhaseMapping[];
   title: string;
   detail: string;
   file?: string;
   line?: number;
-  likelihood: number; // 1-5
-  impact: number;     // 1-5
-  riskLevel: number;  // likelihood × impact (1-25)
-  riskGrade: RiskGrade;
 }
 
 export interface PhaseScore {
@@ -175,14 +183,13 @@ export interface RiskCorrelation {
   type: string;
   message: string;
   severity: RiskGrade;
-  devItemIds: string[];
-  opsItemIds: string[];
+  itemIds: string[];
+  affectedPhases: RiskPhase[];
 }
 
 export interface RiskMatrix {
   items: RiskItem[];
-  devPhase: PhaseScore;
-  opsPhase: PhaseScore;
+  phaseScores: Record<RiskPhase, PhaseScore>;
   correlations: RiskCorrelation[];
 }
 

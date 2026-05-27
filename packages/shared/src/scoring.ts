@@ -11,25 +11,28 @@ import type {
   RiskItem,
   RiskGrade,
   RiskPhase,
+  PhaseMapping,
   PhaseScore,
   RiskCorrelation,
   RiskMatrix,
 } from './types.js';
+import { ALL_PHASES } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Risk mappings loader
 // ---------------------------------------------------------------------------
 
 interface ImpactLikelihood { impact: number; likelihood: number }
+interface PhasedMapping { phases: Record<string, ImpactLikelihood> }
 
 interface RiskMappings {
-  sonarqube: Record<string, Record<string, ImpactLikelihood>>;
-  trivy: Record<string, ImpactLikelihood>;
-  gitleaks: Record<string, ImpactLikelihood>;
-  hadolint: Record<string, ImpactLikelihood>;
-  checkov: Record<string, ImpactLikelihood>;
-  'git-hygiene': Record<string, ImpactLikelihood>;
-  'github-actions': Record<string, ImpactLikelihood>;
+  sonarqube: Record<string, Record<string, PhasedMapping>>;
+  trivy: Record<string, PhasedMapping>;
+  gitleaks: Record<string, PhasedMapping>;
+  hadolint: Record<string, PhasedMapping>;
+  checkov: Record<string, PhasedMapping>;
+  'git-hygiene': Record<string, PhasedMapping>;
+  'github-actions': Record<string, PhasedMapping>;
 }
 
 function loadMappings(): RiskMappings {
@@ -68,6 +71,19 @@ function makeId(source: string, index: number, extra?: string): string {
   return `${source}-${index}${extra ? `-${extra}` : ''}`;
 }
 
+function buildPhaseMappings(entry: PhasedMapping): PhaseMapping[] {
+  return Object.entries(entry.phases).map(([phase, il]) => {
+    const riskLevel = il.impact * il.likelihood;
+    return {
+      phase: phase as RiskPhase,
+      impact: il.impact,
+      likelihood: il.likelihood,
+      riskLevel,
+      riskGrade: riskLevelToGrade(riskLevel),
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // SonarQube → RiskItem[]
 // ---------------------------------------------------------------------------
@@ -76,20 +92,15 @@ export function sonarIssuesToRiskItems(issues: SonarIssue[]): RiskItem[] {
   const mappings = getMappings();
   return issues.map((issue, i) => {
     const typeMap = mappings.sonarqube[issue.type] ?? mappings.sonarqube['BUG'];
-    const il = typeMap[issue.severity] ?? { impact: 1, likelihood: 1 };
-    const riskLevel = il.impact * il.likelihood;
+    const entry = typeMap[issue.severity] ?? typeMap['INFO'] ?? { phases: { code: { impact: 1, likelihood: 1 } } };
     return {
       id: makeId('sonarqube', i, issue.key),
       source: 'sonarqube' as const,
-      phase: 'DEV' as RiskPhase,
+      phases: buildPhaseMappings(entry),
       title: `${issue.type}: ${issue.rule}`,
       detail: issue.message,
       file: issue.component,
       line: issue.line,
-      likelihood: il.likelihood,
-      impact: il.impact,
-      riskLevel,
-      riskGrade: riskLevelToGrade(riskLevel),
     };
   });
 }
@@ -101,18 +112,16 @@ export function sonarIssuesToRiskItems(issues: SonarIssue[]): RiskItem[] {
 export function trivyFindingsToRiskItems(findings: TrivyFinding[]): RiskItem[] {
   const mappings = getMappings();
   return findings.map((f, i) => {
-    const il = mappings.trivy[f.severity] ?? mappings.trivy['UNKNOWN'];
-    const riskLevel = il.impact * il.likelihood;
+    // Key combines severity + resourceType for precise phase routing
+    const key = `${f.severity}_${f.resourceType}`;
+    const fallbackKey = `UNKNOWN_${f.resourceType}`;
+    const entry = mappings.trivy[key] ?? mappings.trivy[fallbackKey] ?? mappings.trivy['UNKNOWN_LIBRARY'];
     return {
       id: makeId('trivy', i, f.cveId),
       source: 'trivy' as const,
-      phase: 'OPS' as RiskPhase,
+      phases: buildPhaseMappings(entry),
       title: f.cveId ? `${f.cveId} in ${f.packageName}` : `CVE in ${f.packageName}`,
       detail: f.title,
-      likelihood: il.likelihood,
-      impact: il.impact,
-      riskLevel,
-      riskGrade: riskLevelToGrade(riskLevel),
     };
   });
 }
@@ -124,20 +133,15 @@ export function trivyFindingsToRiskItems(findings: TrivyFinding[]): RiskItem[] {
 export function secretFindingsToRiskItems(findings: SecretFinding[]): RiskItem[] {
   const mappings = getMappings();
   return findings.map((f, i) => {
-    const il = mappings.gitleaks[f.ruleId] ?? mappings.gitleaks['default'];
-    const riskLevel = il.impact * il.likelihood;
+    const entry = mappings.gitleaks[f.ruleId] ?? mappings.gitleaks['default'];
     return {
       id: makeId('gitleaks', i, f.ruleId),
       source: 'gitleaks' as const,
-      phase: 'OPS' as RiskPhase,
+      phases: buildPhaseMappings(entry),
       title: `Secret detected: ${f.description}`,
       detail: `Found in ${f.file} at line ${f.line}`,
       file: f.file,
       line: f.line,
-      likelihood: il.likelihood,
-      impact: il.impact,
-      riskLevel,
-      riskGrade: riskLevelToGrade(riskLevel),
     };
   });
 }
@@ -149,20 +153,15 @@ export function secretFindingsToRiskItems(findings: SecretFinding[]): RiskItem[]
 export function hadolintFindingsToRiskItems(findings: HadolintFinding[]): RiskItem[] {
   const mappings = getMappings();
   return findings.map((f, i) => {
-    const il = mappings.hadolint[f.level] ?? { impact: 1, likelihood: 1 };
-    const riskLevel = il.impact * il.likelihood;
+    const entry = mappings.hadolint[f.level] ?? { phases: { build: { impact: 1, likelihood: 1 } } };
     return {
       id: makeId('hadolint', i, f.code),
       source: 'hadolint' as const,
-      phase: 'OPS' as RiskPhase,
+      phases: buildPhaseMappings(entry),
       title: `Dockerfile: ${f.code}`,
       detail: f.message,
       file: f.file,
       line: f.line,
-      likelihood: il.likelihood,
-      impact: il.impact,
-      riskLevel,
-      riskGrade: riskLevelToGrade(riskLevel),
     };
   });
 }
@@ -174,19 +173,14 @@ export function hadolintFindingsToRiskItems(findings: HadolintFinding[]): RiskIt
 export function checkovFindingsToRiskItems(findings: CheckovFinding[]): RiskItem[] {
   const mappings = getMappings();
   return findings.map((f, i) => {
-    const il = mappings.checkov[f.severity] ?? mappings.checkov['LOW'];
-    const riskLevel = il.impact * il.likelihood;
+    const entry = mappings.checkov[f.severity] ?? mappings.checkov['LOW'];
     return {
       id: makeId('checkov', i, f.checkId),
       source: 'checkov' as const,
-      phase: 'OPS' as RiskPhase,
+      phases: buildPhaseMappings(entry),
       title: `IaC: ${f.checkId}`,
       detail: f.checkName,
       file: f.file,
-      likelihood: il.likelihood,
-      impact: il.impact,
-      riskLevel,
-      riskGrade: riskLevelToGrade(riskLevel),
     };
   });
 }
@@ -201,34 +195,22 @@ export function gitHygieneToRiskItems(metrics: GitHygieneMetrics): RiskItem[] {
   let idx = 0;
 
   if (metrics.uniqueAuthors < 2) {
-    const il = mappings['git-hygiene']['single-author'];
-    const riskLevel = il.impact * il.likelihood;
     items.push({
       id: makeId('git-hygiene', idx++, 'single-author'),
       source: 'git-hygiene',
-      phase: 'OPS',
+      phases: buildPhaseMappings(mappings['git-hygiene']['single-author']),
       title: 'Single author (bus factor risk)',
       detail: `Only ${metrics.uniqueAuthors} unique contributor(s) detected`,
-      likelihood: il.likelihood,
-      impact: il.impact,
-      riskLevel,
-      riskGrade: riskLevelToGrade(riskLevel),
     });
   }
 
   if (!metrics.hasGitignore) {
-    const il = mappings['git-hygiene']['no-gitignore'];
-    const riskLevel = il.impact * il.likelihood;
     items.push({
       id: makeId('git-hygiene', idx++, 'no-gitignore'),
       source: 'git-hygiene',
-      phase: 'OPS',
+      phases: buildPhaseMappings(mappings['git-hygiene']['no-gitignore']),
       title: 'Missing .gitignore',
       detail: 'No .gitignore file found — secrets or build artifacts may be committed',
-      likelihood: il.likelihood,
-      impact: il.impact,
-      riskLevel,
-      riskGrade: riskLevelToGrade(riskLevel),
     });
   }
 
@@ -242,19 +224,14 @@ export function gitHygieneToRiskItems(metrics: GitHygieneMetrics): RiskItem[] {
 export function githubActionsToRiskItems(findings: GithubActionsFinding[]): RiskItem[] {
   const mappings = getMappings();
   return findings.map((f, i) => {
-    const il = mappings['github-actions'][f.rule] ?? mappings['github-actions']['unpinned-action'];
-    const riskLevel = il.impact * il.likelihood;
+    const entry = mappings['github-actions'][f.rule] ?? mappings['github-actions']['unpinned-action'];
     return {
       id: makeId('github-actions', i, f.rule),
       source: 'github-actions' as const,
-      phase: 'OPS' as RiskPhase,
+      phases: buildPhaseMappings(entry),
       title: `GitHub Actions: ${f.rule}`,
       detail: f.message,
       file: f.file,
-      likelihood: il.likelihood,
-      impact: il.impact,
-      riskLevel,
-      riskGrade: riskLevelToGrade(riskLevel),
     };
   });
 }
@@ -263,29 +240,28 @@ export function githubActionsToRiskItems(findings: GithubActionsFinding[]): Risk
 // Phase score aggregation
 // ---------------------------------------------------------------------------
 
-// Normalised score: average riskLevel of the top-10 worst items, scaled to 0-100.
-// Using a capped top-N prevents huge repos from always hitting 100.
+// Normalised score: average riskLevel of the top-10 worst phase mappings, scaled to 0-100.
 const TOP_N = 10;
 
 export function aggregatePhaseScore(items: RiskItem[], phase: RiskPhase): PhaseScore {
-  const phaseItems = items.filter(i => i.phase === phase);
-  const sorted = [...phaseItems].sort((a, b) => b.riskLevel - a.riskLevel);
+  const phaseMappings = items.flatMap(i => i.phases.filter(p => p.phase === phase));
+  const sorted = [...phaseMappings].sort((a, b) => b.riskLevel - a.riskLevel);
   const topN = sorted.slice(0, TOP_N);
   const avgLevel = topN.length > 0
-    ? topN.reduce((sum, i) => sum + i.riskLevel, 0) / topN.length
+    ? topN.reduce((sum, p) => sum + p.riskLevel, 0) / topN.length
     : 0;
   const score = Math.round((avgLevel / 25) * 100);
 
   const gradeCounts: Record<RiskGrade, number> = {
     CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0,
   };
-  for (const item of phaseItems) gradeCounts[item.riskGrade]++;
+  for (const pm of phaseMappings) gradeCounts[pm.riskGrade]++;
 
   return {
     phase,
     score,
     grade: scoreToGrade(score),
-    itemCount: phaseItems.length,
+    itemCount: phaseMappings.length,
     breakdown: (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as RiskGrade[]).map(g => ({
       grade: g,
       count: gradeCounts[g],
@@ -297,48 +273,45 @@ export function aggregatePhaseScore(items: RiskItem[], phase: RiskPhase): PhaseS
 // Correlation detection
 // ---------------------------------------------------------------------------
 
-export function detectCorrelations(
-  devItems: RiskItem[],
-  opsItems: RiskItem[],
-): RiskCorrelation[] {
+export function detectCorrelations(items: RiskItem[]): RiskCorrelation[] {
   const correlations: RiskCorrelation[] = [];
 
-  // SonarQube vulnerabilities that also have a matching Trivy CVE (same package heuristic)
-  const sonarVulnItems = devItems.filter(i => i.source === 'sonarqube' && i.title.includes('VULNERABILITY'));
-  const trivyItems = opsItems.filter(i => i.source === 'trivy');
+  const sonarVulnItems = items.filter(i => i.source === 'sonarqube' && i.title.includes('VULNERABILITY'));
+  const trivyItems = items.filter(i => i.source === 'trivy');
   if (sonarVulnItems.length > 0 && trivyItems.length > 0) {
     correlations.push({
       type: 'VULN_AND_CVE',
       message: `${sonarVulnItems.length} SonarQube vulnerability finding(s) and ${trivyItems.length} Trivy CVE(s) detected — review overlapping dependencies`,
       severity: 'HIGH',
-      devItemIds: sonarVulnItems.map(i => i.id),
-      opsItemIds: trivyItems.map(i => i.id),
+      itemIds: [...sonarVulnItems.map(i => i.id), ...trivyItems.map(i => i.id)],
+      affectedPhases: ['code', 'operate'],
     });
   }
 
-  // Secrets found alongside code bugs — combined risk
-  const secretItems = opsItems.filter(i => i.source === 'gitleaks');
-  const criticalBugItems = devItems.filter(i => i.riskGrade === 'CRITICAL' || i.riskGrade === 'HIGH');
-  if (secretItems.length > 0 && criticalBugItems.length > 0) {
+  const secretItems = items.filter(i => i.source === 'gitleaks');
+  const criticalCodeItems = items.filter(i =>
+    i.source === 'sonarqube' &&
+    i.phases.some(p => p.riskGrade === 'CRITICAL' || p.riskGrade === 'HIGH'),
+  );
+  if (secretItems.length > 0 && criticalCodeItems.length > 0) {
     correlations.push({
       type: 'SECRET_WITH_HIGH_BUG_DENSITY',
-      message: `Exposed secrets combined with ${criticalBugItems.length} high/critical code issue(s) significantly elevates attack surface`,
+      message: `Exposed secrets combined with ${criticalCodeItems.length} high/critical code issue(s) significantly elevates attack surface`,
       severity: 'CRITICAL',
-      devItemIds: criticalBugItems.map(i => i.id),
-      opsItemIds: secretItems.map(i => i.id),
+      itemIds: [...secretItems.map(i => i.id), ...criticalCodeItems.map(i => i.id)],
+      affectedPhases: ['code', 'operate'],
     });
   }
 
-  // IaC misconfigs + Dockerfile issues = deployment risk
-  const checkovItems = opsItems.filter(i => i.source === 'checkov');
-  const hadolintItems = opsItems.filter(i => i.source === 'hadolint');
+  const checkovItems = items.filter(i => i.source === 'checkov');
+  const hadolintItems = items.filter(i => i.source === 'hadolint');
   if (checkovItems.length > 0 && hadolintItems.length > 0) {
     correlations.push({
       type: 'IAC_AND_DOCKERFILE_ISSUES',
       message: `${checkovItems.length} IaC misconfiguration(s) and ${hadolintItems.length} Dockerfile issue(s) suggest deployment hardening is needed`,
       severity: 'MEDIUM',
-      devItemIds: [],
-      opsItemIds: [...checkovItems.map(i => i.id), ...hadolintItems.map(i => i.id)],
+      itemIds: [...checkovItems.map(i => i.id), ...hadolintItems.map(i => i.id)],
+      affectedPhases: ['build', 'release', 'deploy', 'operate'],
     });
   }
 
@@ -349,15 +322,14 @@ export function detectCorrelations(
 // Build complete RiskMatrix
 // ---------------------------------------------------------------------------
 
-export function buildRiskMatrix(
-  devItems: RiskItem[],
-  opsItems: RiskItem[],
-): RiskMatrix {
-  const allItems = [...devItems, ...opsItems];
+export function buildRiskMatrix(allItems: RiskItem[]): RiskMatrix {
+  const phaseScores = Object.fromEntries(
+    ALL_PHASES.map(phase => [phase, aggregatePhaseScore(allItems, phase)]),
+  ) as Record<RiskPhase, PhaseScore>;
+
   return {
     items: allItems,
-    devPhase: aggregatePhaseScore(allItems, 'DEV'),
-    opsPhase: aggregatePhaseScore(allItems, 'OPS'),
-    correlations: detectCorrelations(devItems, opsItems),
+    phaseScores,
+    correlations: detectCorrelations(allItems),
   };
 }

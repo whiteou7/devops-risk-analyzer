@@ -54,11 +54,18 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
           return cached.result;
         }
 
-        // Run SonarQube pipeline and all ops tools in parallel
-        await job.log('Running dev analysis (SonarQube) and ops analysis in parallel');
+        // Run all scanners in parallel — SonarQube pipeline is internally sequential
+        await job.log('Running all scanners in parallel');
 
-        const [sonarResult, opsResults] = await Promise.all([
-          // Dev pipeline: scanner → poll → fetch
+        const [
+          sonarSettled,
+          trivySettled,
+          gitleaksSettled,
+          hadolintSettled,
+          checkovSettled,
+          gitHygieneSettled,
+          githubActionsSettled,
+        ] = await Promise.allSettled([
           (async () => {
             const ceTaskId = await runSonarScanner(repoDir, projectKey);
             await job.updateProgress(35);
@@ -68,31 +75,43 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
             await job.log('Fetching SonarQube results');
             return fetchResults(projectKey, repoUrl);
           })(),
-
-          // Ops pipeline: all tools in parallel
-          Promise.all([
-            process.env['SKIP_TRIVY'] !== 'true'
-              ? runTrivy(repoDir).catch(e => { console.warn('[trivy] error:', e.message); return null; })
-              : Promise.resolve(null),
-            process.env['SKIP_GITLEAKS'] !== 'true'
-              ? runGitleaks(repoDir, jobId).catch(e => { console.warn('[gitleaks] error:', e.message); return null; })
-              : Promise.resolve(null),
-            process.env['SKIP_HADOLINT'] !== 'true'
-              ? runHadolint(repoDir).catch(e => { console.warn('[hadolint] error:', e.message); return null; })
-              : Promise.resolve(null),
-            process.env['SKIP_CHECKOV'] !== 'true'
-              ? runCheckov(repoDir).catch(e => { console.warn('[checkov] error:', e.message); return null; })
-              : Promise.resolve(null),
-            analyzeGitHygiene(repoDir).catch(e => { console.warn('[git-hygiene] error:', e.message); return null; }),
-            process.env['SKIP_GITHUB_ACTIONS'] !== 'true'
-              ? analyzeGithubActions(repoDir, repoUrl, githubToken).catch(e => { console.warn('[github-actions] error:', e.message); return null; })
-              : Promise.resolve(null),
-          ]),
+          process.env['SKIP_TRIVY'] !== 'true'
+            ? runTrivy(repoDir)
+            : Promise.resolve(null),
+          process.env['SKIP_GITLEAKS'] !== 'true'
+            ? runGitleaks(repoDir, jobId)
+            : Promise.resolve(null),
+          process.env['SKIP_HADOLINT'] !== 'true'
+            ? runHadolint(repoDir)
+            : Promise.resolve(null),
+          process.env['SKIP_CHECKOV'] !== 'true'
+            ? runCheckov(repoDir)
+            : Promise.resolve(null),
+          analyzeGitHygiene(repoDir),
+          process.env['SKIP_GITHUB_ACTIONS'] !== 'true'
+            ? analyzeGithubActions(repoDir, repoUrl, githubToken)
+            : Promise.resolve(null),
         ]);
 
         await job.updateProgress(85);
 
-        const [trivyResult, gitleaksResult, hadolintResult, checkovResult, gitHygieneResult, githubActionsResult] = opsResults;
+        if (sonarSettled.status === 'rejected') throw sonarSettled.reason;
+        const sonarResult = sonarSettled.value;
+
+        function settled<T>(result: PromiseSettledResult<T>, label: string): T | null {
+          if (result.status === 'rejected') {
+            console.warn(`[${label}] error:`, result.reason?.message ?? result.reason);
+            return null;
+          }
+          return result.value;
+        }
+
+        const trivyResult      = settled(trivySettled,        'trivy');
+        const gitleaksResult   = settled(gitleaksSettled,     'gitleaks');
+        const hadolintResult   = settled(hadolintSettled,     'hadolint');
+        const checkovResult    = settled(checkovSettled,      'checkov');
+        const gitHygieneResult = settled(gitHygieneSettled,   'git-hygiene');
+        const githubActionsResult = settled(githubActionsSettled, 'github-actions');
 
         // Build OpsAnalysis (raw tool outputs)
         const opsAnalysis: OpsAnalysis = {
@@ -110,8 +129,8 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
         };
 
         // Map all findings to RiskItems and build the risk matrix
-        const devItems = sonarIssuesToRiskItems(sonarResult.issues);
-        const opsItems = [
+        const allItems = [
+          ...sonarIssuesToRiskItems(sonarResult.issues),
           ...trivyFindingsToRiskItems(opsAnalysis.trivy.findings),
           ...secretFindingsToRiskItems(opsAnalysis.secrets.findings),
           ...hadolintFindingsToRiskItems(opsAnalysis.hadolint.findings),
@@ -120,7 +139,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
           ...githubActionsToRiskItems(opsAnalysis.githubActions.findings),
         ];
 
-        const riskMatrix = buildRiskMatrix(devItems, opsItems);
+        const riskMatrix = buildRiskMatrix(allItems);
 
         await job.updateProgress(95);
 
