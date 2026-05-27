@@ -7,9 +7,8 @@ import JobProgressBar from '../components/JobProgressBar.vue';
 import RiskMatrixGrid from '../components/RiskMatrixGrid.vue';
 import RiskSummaryCard from '../components/RiskSummaryCard.vue';
 import IssueTable from '../components/IssueTable.vue';
+import DevOpsPipelineSelector from '../components/DevOpsPipelineSelector.vue';
 import type { RiskPhase } from '@devops-risk-analyzer/shared';
-
-const ALL_PHASES: RiskPhase[] = ['plan', 'code', 'build', 'test', 'release', 'deploy', 'operate', 'monitor'];
 
 const props = defineProps<{ jobId: string }>();
 const store = useJobStore();
@@ -92,37 +91,28 @@ const correlationClass: Record<string, string> = {
 
     <!-- Results -->
     <template v-if="store.status === 'completed' && matrix">
-      <!-- Phase score cards — all 8 pipeline phases -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <RiskSummaryCard
-          v-for="phase in ALL_PHASES"
-          :key="phase"
-          :phase="matrix.phaseScores[phase]"
-        />
+      <!-- DevOps pipeline phase selector -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl px-6 py-3">
+        <DevOpsPipelineSelector v-model="activePhase" />
       </div>
 
-      <!-- Phase selector + Risk matrix -->
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-        <div class="flex items-center justify-between flex-wrap gap-3">
+      <!-- Phase score card + Risk matrix side by side -->
+      <div class="flex flex-col lg:flex-row gap-6 items-start">
+        <!-- Single score card for the active phase -->
+        <div class="w-full lg:w-64 flex-shrink-0">
+          <RiskSummaryCard :phase="matrix.phaseScores[activePhase]" />
+        </div>
+
+        <!-- Risk matrix -->
+        <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
           <h3 class="text-lg font-semibold text-white">Risk Matrix</h3>
-          <div class="flex flex-wrap gap-1.5">
-            <button
-              v-for="phase in ALL_PHASES"
-              :key="phase"
-              class="px-3 py-1 rounded-full text-xs font-medium capitalize transition-colors"
-              :class="activePhase === phase
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white'"
-              @click="activePhase = phase"
-            >{{ phase }}</button>
+          <div class="overflow-x-auto">
+            <RiskMatrixGrid :items="matrix.items" :phase="activePhase" />
           </div>
+          <p class="text-xs text-slate-600">
+            X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical) · Showing findings relevant to the <span class="capitalize text-slate-500">{{ activePhase }}</span> phase
+          </p>
         </div>
-        <div class="overflow-x-auto">
-          <RiskMatrixGrid :items="matrix.items" :phase="activePhase" />
-        </div>
-        <p class="text-xs text-slate-600">
-          X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical) · Showing findings relevant to the <span class="capitalize text-slate-500">{{ activePhase }}</span> phase
-        </p>
       </div>
 
       <!-- Correlations -->
