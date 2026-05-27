@@ -61,6 +61,7 @@ function mapSeverity(s: string | undefined): TrivyFinding['severity'] {
 
 export async function runTrivy(repoDir: string): Promise<TrivyResult> {
   const TIMEOUT_MS = 3 * 60 * 1000;
+  console.log(`[trivy] starting filesystem scan — dir=${repoDir}`);
 
   let stdout = '';
   try {
@@ -70,12 +71,14 @@ export async function runTrivy(repoDir: string): Promise<TrivyResult> {
       { timeout: TIMEOUT_MS, env: { ...process.env, TRIVY_NO_PROGRESS: 'true' } },
     );
     stdout = result.stdout;
+    console.debug('[trivy] scan process exited successfully');
   } catch (err: unknown) {
     const e = err as { timedOut?: boolean; stdout?: string };
     if (e.timedOut) {
       console.warn('[trivy] scan timed out, returning partial results');
       stdout = e.stdout ?? '{}';
     } else {
+      console.error('[trivy] scan failed:', (err as Error).message);
       console.warn('[trivy] scan failed:', (err as Error).message);
       return emptyResult();
     }
@@ -83,8 +86,14 @@ export async function runTrivy(repoDir: string): Promise<TrivyResult> {
 
   try {
     const parsed = JSON.parse(stdout) as TrivyJsonOutput;
-    return extractFindings(parsed);
+    const result = extractFindings(parsed);
+    console.debug(
+      `[trivy] findings: critical=${result.critical} high=${result.high} medium=${result.medium} low=${result.low} total=${result.findings.length}`,
+    );
+    console.debug('[trivy] full result:', JSON.stringify(result, null, 2));
+    return result;
   } catch {
+    console.error('[trivy] failed to parse JSON output');
     return emptyResult();
   }
 }

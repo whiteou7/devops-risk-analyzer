@@ -40,6 +40,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
 
       delete job.data.githubToken;
 
+      console.log(`[worker] job ${jobId} started — repo=${repoUrl} project=${projectKey}${requestedSha ? ` sha=${requestedSha}` : ''} forceRefresh=${forceRefresh ?? false}`);
       await job.updateProgress(5);
 
       try {
@@ -50,10 +51,12 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
         // Check DB cache for this exact repo+commit before running any analysis
         const cached = !forceRefresh ? await findAnalysis(repoUrl, resolvedSha) : null;
         if (cached) {
+          console.log(`[worker] job ${jobId} cache hit for ${repoUrl}@${resolvedSha} — skipping analysis`);
           await job.log(`Cache hit for ${repoUrl}@${resolvedSha} — returning stored result`);
           await cleanup(repoDir);
           return cached.result;
         }
+        console.debug(`[worker] job ${jobId} no cache entry found — running full analysis`);
 
         // Run all scanners in parallel — SonarQube pipeline is internally sequential
         await job.log('Running all scanners in parallel');
@@ -95,6 +98,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
         ]);
 
         await job.updateProgress(85);
+        console.debug(`[worker] job ${jobId} all scanners settled — sonar=${sonarSettled.status} trivy=${trivySettled.status} gitleaks=${gitleaksSettled.status} hadolint=${hadolintSettled.status} checkov=${checkovSettled.status} git-hygiene=${gitHygieneSettled.status} github-actions=${githubActionsSettled.status}`);
 
         if (sonarSettled.status === 'rejected') throw sonarSettled.reason;
         const sonarResult = sonarSettled.value;
@@ -155,13 +159,16 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
         ];
 
         const riskMatrix = buildRiskMatrix(allItems);
+        console.debug(`[worker] job ${jobId} risk matrix built — total risk items=${allItems.length}`);
 
         await job.updateProgress(95);
 
         const result: AnalysisResult = { ...sonarResult, commitSha: resolvedSha, opsAnalysis, riskMatrix };
-
+        console.log(`[worker] job ${jobId} analysis complete — sha=${resolvedSha} qualityGate=${sonarResult.metrics.qualityGate}`);
+        
         // Persist to DB so future requests for the same repo+commit are served from cache
         await saveAnalysis(repoUrl, resolvedSha, projectKey, result);
+        console.debug(`[worker] job ${jobId} result persisted to DB`);
 
         await job.updateProgress(100);
 

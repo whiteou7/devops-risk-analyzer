@@ -19,6 +19,7 @@ interface CETaskResponse {
  */
 export async function pollSonarTask(ceTaskId: string): Promise<void> {
   const client = getSonarClient();
+  console.log(`[sonar-poll] polling task ${ceTaskId} (max ${MAX_RETRIES} attempts, ${POLL_INTERVAL_MS}ms interval)`);
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const { data } = await client.get<CETaskResponse>('/api/ce/task', {
@@ -26,14 +27,20 @@ export async function pollSonarTask(ceTaskId: string): Promise<void> {
     });
 
     const { status, errorMessage } = data.task;
+    console.debug(`[sonar-poll] attempt ${attempt + 1}/${MAX_RETRIES} — status=${status}`);
 
-    if (status === 'SUCCESS') return;
+    if (status === 'SUCCESS') {
+      console.log(`[sonar-poll] task ${ceTaskId} succeeded`);
+      return;
+    }
 
     if (status === 'FAILED') {
+      console.error(`[sonar-poll] task ${ceTaskId} failed: ${errorMessage ?? 'unknown error'}`);
       throw new Error(`SonarQube analysis failed: ${errorMessage ?? 'unknown error'}`);
     }
 
     if (status === 'CANCELLED') {
+      console.error(`[sonar-poll] task ${ceTaskId} was cancelled`);
       throw new Error('SonarQube analysis was cancelled');
     }
 
@@ -41,6 +48,7 @@ export async function pollSonarTask(ceTaskId: string): Promise<void> {
     await sleep(POLL_INTERVAL_MS);
   }
 
+  console.error(`[sonar-poll] task ${ceTaskId} timed out after ${(MAX_RETRIES * POLL_INTERVAL_MS) / 1000}s`);
   throw new Error(
     `SonarQube task ${ceTaskId} did not complete within ${(MAX_RETRIES * POLL_INTERVAL_MS) / 1000}s`,
   );

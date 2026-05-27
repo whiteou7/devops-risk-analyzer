@@ -28,6 +28,7 @@ interface CheckovJsonOutput {
 
 export async function runCheckov(repoDir: string): Promise<CheckovResult> {
   const TIMEOUT_MS = 3 * 60 * 1000;
+  console.log(`[checkov] starting IaC scan — dir=${repoDir}`);
 
   let stdout = '';
   try {
@@ -46,19 +47,26 @@ export async function runCheckov(repoDir: string): Promise<CheckovResult> {
       },
     );
     stdout = result.stdout;
+    console.debug('[checkov] scan process exited');
   } catch (err: unknown) {
     const e = err as { timedOut?: boolean };
     if (e.timedOut) {
+      console.error('[checkov] scan timed out');
       console.warn('[checkov] scan timed out');
     } else {
+      console.error('[checkov] scan failed:', (err as Error).message);
       console.warn('[checkov] scan failed:', (err as Error).message);
     }
     return emptyResult();
   }
 
   try {
-    return parseCheckovOutput(stdout, repoDir);
+    const result = parseCheckovOutput(stdout, repoDir);
+    console.debug(`[checkov] results: passed=${result.passed} failed=${result.failed} findings=${result.findings.length}`);
+    console.debug('[checkov] full result:', JSON.stringify(result, null, 2));
+    return result;
   } catch (err) {
+    console.error('[checkov] failed to parse output:', (err as Error).message);
     console.warn('[checkov] failed to parse output:', (err as Error).message);
     return emptyResult();
   }

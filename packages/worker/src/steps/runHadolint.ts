@@ -41,6 +41,7 @@ async function findDockerfiles(dir: string, maxDepth = 3): Promise<string[]> {
 export async function runHadolint(repoDir: string): Promise<HadolintResult> {
   const TIMEOUT_MS = 30 * 1000;
   const dockerfiles = await findDockerfiles(repoDir);
+  console.log(`[hadolint] found ${dockerfiles.length} Dockerfile(s) in ${repoDir}`);
 
   if (dockerfiles.length === 0) {
     return { errors: 0, warnings: 0, findings: [] };
@@ -93,7 +94,10 @@ export async function runHadolint(repoDir: string): Promise<HadolintResult> {
 
   const errors = filteredFindings.filter(f => f.level === 'error').length;
   const warnings = filteredFindings.filter(f => f.level === 'warning').length;
-  return { errors, warnings, findings: filteredFindings };
+  const hadolintResult = { errors, warnings, findings: filteredFindings };
+  console.debug(`[hadolint] findings: errors=${errors} warnings=${warnings} total=${filteredFindings.length}`);
+  console.debug('[hadolint] full result:', JSON.stringify(hadolintResult, null, 2));
+  return hadolintResult;
 }
 
 function normaliseLevel(level: string | undefined): HadolintFinding['level'] {

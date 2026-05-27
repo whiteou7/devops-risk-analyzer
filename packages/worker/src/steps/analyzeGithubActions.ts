@@ -23,17 +23,23 @@ export async function analyzeGithubActions(
   repoUrl: string,
   githubToken?: string,
 ): Promise<GithubActionsResult> {
+  console.log(`[github-actions] analyzing workflows — dir=${repoDir} repo=${repoUrl}`);
+
   const [staticFindings, jobFindings] = await Promise.all([
     analyzeWorkflowFiles(repoDir),
     analyzeJobLogs(repoUrl, githubToken),
   ]);
 
-  const allFindings = [...staticFindings, ...jobFindings];
+  console.debug(`[github-actions] static findings=${staticFindings.length} job-log findings=${jobFindings.length}`);
 
-  return {
-    workflowCount: await countWorkflowFiles(repoDir),
-    findings: allFindings.slice(0, MAX_FINDINGS),
-  };
+  const allFindings = [...staticFindings, ...jobFindings];
+  const workflowCount = await countWorkflowFiles(repoDir);
+
+  const githubActionsResult = { workflowCount, findings: allFindings.slice(0, MAX_FINDINGS) };
+  console.debug(`[github-actions] workflow files=${workflowCount} total findings=${allFindings.length} (capped at ${MAX_FINDINGS})`);
+  console.debug('[github-actions] full result:', JSON.stringify(githubActionsResult, null, 2));
+
+  return githubActionsResult;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,8 @@ import path from 'path';
 import type { GitHygieneMetrics } from '@devops-risk-analyzer/shared';
 
 export async function analyzeGitHygiene(repoDir: string): Promise<GitHygieneMetrics> {
+  console.log(`[git-hygiene] analyzing repository metrics — dir=${repoDir}`);
+
   const [uniqueAuthors, recentCommitCount, topContributorCommitShare, hasGitignore] =
     await Promise.all([
       countUniqueAuthors(repoDir),
@@ -12,7 +14,12 @@ export async function analyzeGitHygiene(repoDir: string): Promise<GitHygieneMetr
       checkGitignore(repoDir),
     ]);
 
-  return { uniqueAuthors, recentCommitCount, hasGitignore, topContributorCommitShare };
+  const gitHygieneResult = { uniqueAuthors, recentCommitCount, hasGitignore, topContributorCommitShare };
+  console.debug(
+    `[git-hygiene] authors=${uniqueAuthors} commits=${recentCommitCount} topShare=${topContributorCommitShare.toFixed(2)} hasGitignore=${hasGitignore}`,
+  );
+  console.debug('[git-hygiene] full result:', JSON.stringify(gitHygieneResult, null, 2));
+  return gitHygieneResult;
 }
 
 async function countUniqueAuthors(repoDir: string): Promise<number> {

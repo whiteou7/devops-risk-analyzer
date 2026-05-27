@@ -14,6 +14,7 @@ export async function cloneRepo(
   depth: number = 1,
   commitSha?: string,
 ): Promise<string> {
+  console.log(`[clone] cloning ${repoUrl}${commitSha ? `@${commitSha}` : ''} depth=${depth} → ${destDir}`);
   await fs.rm(destDir, { recursive: true, force: true });
 
   const cloneUrl = githubToken
@@ -32,19 +33,23 @@ export async function cloneRepo(
     const message = err instanceof Error ? err.message : String(err);
 
     if (message.includes('Authentication failed') || message.includes('Repository not found')) {
-      throw new Error(
-        'Repository is private or does not exist. Provide a githubToken.',
-      );
+      const authErr = 'Repository is private or does not exist. Provide a githubToken.';
+      console.error('[clone] auth error:', authErr);
+      throw new Error(authErr);
     }
 
     if ((err as { timedOut?: boolean }).timedOut) {
-      throw new Error(`Clone timed out after ${CLONE_TIMEOUT_MS / 1000}s — repository may be too large`);
+      const timeoutErr = `Clone timed out after ${CLONE_TIMEOUT_MS / 1000}s — repository may be too large`;
+      console.error('[clone] timeout:', timeoutErr);
+      throw new Error(timeoutErr);
     }
 
+    console.error('[clone] git clone failed:', message);
     throw new Error(`git clone failed: ${message}`);
   }
 
   if (commitSha) {
+    console.debug(`[clone] checking out specific commit ${commitSha}`);
     try {
       // The commit may not be in the shallow history; fetch it explicitly.
       await execa('git', ['-C', destDir, 'fetch', '--depth', '1', 'origin', commitSha], {
@@ -58,6 +63,7 @@ export async function cloneRepo(
         env: gitEnv,
       });
     } catch {
+      console.error(`[clone] commit ${commitSha} not found or could not be checked out`);
       throw new Error(`Commit ${commitSha} not found or could not be checked out`);
     }
   }
@@ -68,5 +74,7 @@ export async function cloneRepo(
     env: gitEnv,
   });
 
-  return stdout.trim();
+  const resolvedSha = stdout.trim();
+  console.debug(`[clone] resolved HEAD → ${resolvedSha}`);
+  return resolvedSha;
 }

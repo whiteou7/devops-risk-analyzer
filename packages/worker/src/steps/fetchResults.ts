@@ -36,6 +36,7 @@ export async function fetchResults(
   projectKey: string,
   repoUrl: string,
 ): Promise<Omit<AnalysisResult, 'commitSha'>> {
+  console.log(`[sonar-fetch] fetching results for projectKey=${projectKey}`);
   const client = getSonarClient();
   const sonarUrl = process.env.SONAR_URL!;
 
@@ -90,7 +91,12 @@ export async function fetchResults(
     ...(i.line !== undefined ? { line: i.line } : {}),
   }));
 
-  return {
+  console.debug(
+    `[sonar-fetch] metrics: bugs=${metrics.bugs} vulns=${metrics.vulnerabilities} codeSmells=${metrics.codeSmells} qualityGate=${metrics.qualityGate}`,
+  );
+  console.debug(`[sonar-fetch] fetched ${issues.length} issues`);
+
+  const fetchResult = {
     projectKey,
     repoUrl,
     analyzedAt: new Date().toISOString(),
@@ -98,4 +104,6 @@ export async function fetchResults(
     issues,
     sonarDashboardUrl: `${sonarUrl}/dashboard?id=${encodeURIComponent(projectKey)}`,
   };
+  console.debug('[sonar-fetch] full result:', JSON.stringify(fetchResult, null, 2));
+  return fetchResult;
 }

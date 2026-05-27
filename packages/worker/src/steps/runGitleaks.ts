@@ -20,6 +20,7 @@ interface GitleaksJsonFinding {
 export async function runGitleaks(repoDir: string, jobId: string): Promise<GitleaksResult> {
   const TIMEOUT_MS = 2 * 60 * 1000;
   const reportPath = path.join(tmpdir(), `gitleaks-${jobId}.json`);
+  console.log(`[gitleaks] starting scan — dir=${repoDir} report=${reportPath}`);
 
   try {
     await execa(
@@ -37,8 +38,10 @@ export async function runGitleaks(repoDir: string, jobId: string): Promise<Gitle
   } catch (err: unknown) {
     const e = err as { timedOut?: boolean };
     if (e.timedOut) {
+      console.error('[gitleaks] scan timed out');
       console.warn('[gitleaks] scan timed out');
     } else {
+      console.error('[gitleaks] scan error:', (err as Error).message);
       console.warn('[gitleaks] scan error:', (err as Error).message);
     }
     return emptyResult();
@@ -48,7 +51,10 @@ export async function runGitleaks(repoDir: string, jobId: string): Promise<Gitle
     const raw = await readFile(reportPath, 'utf8');
     await unlink(reportPath).catch(() => undefined);
 
-    if (!raw.trim() || raw.trim() === 'null') return emptyResult();
+    if (!raw.trim() || raw.trim() === 'null') {
+      console.debug('[gitleaks] no secrets found');
+      return emptyResult();
+    }
 
     const parsed = JSON.parse(raw) as GitleaksJsonFinding[];
     if (!Array.isArray(parsed)) return emptyResult();
@@ -60,8 +66,12 @@ export async function runGitleaks(repoDir: string, jobId: string): Promise<Gitle
       line: f.StartLine ?? 0,
     }));
 
-    return { count: findings.length, findings };
+    const gitleaksResult = { count: findings.length, findings };
+    console.debug(`[gitleaks] found ${findings.length} secret finding(s)`);
+    console.debug('[gitleaks] full result:', JSON.stringify(gitleaksResult, null, 2));
+    return gitleaksResult;
   } catch (err) {
+    console.error('[gitleaks] failed to parse report:', (err as Error).message);
     console.warn('[gitleaks] failed to parse report:', (err as Error).message);
     return emptyResult();
   }
