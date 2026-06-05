@@ -259,3 +259,36 @@ export type AnalyzeResponseData =
 
 /** @deprecated Use JobResource */
 export type JobResponse = JobResource & { jobId: string };
+
+// ---------------------------------------------------------------------------
+// Timeline analysis — risk trend over past month
+// ---------------------------------------------------------------------------
+
+export interface TimelineRequest {
+  repoUrl: string;
+  githubToken?: string;
+  forceRefresh?: boolean;
+}
+
+export interface TimelineJobData {
+  repoUrl: string;
+  githubToken?: string;
+  forceRefresh?: boolean;
+}
+
+/** A single commit's data used as a graph node in the risk trend chart. */
+export interface CommitRiskPoint {
+  sha: string;
+  shortSha: string;
+  message: string;
+  author: string;
+  date: string; // ISO timestamp
+  riskMatrix: RiskMatrix;
+}
+
+/** Result returned by the timeline analysis job. */
+export interface TimelineResult {
+  repoUrl: string;
+  points: CommitRiskPoint[]; // ordered oldest → newest
+  analyzedAt: string;
+}

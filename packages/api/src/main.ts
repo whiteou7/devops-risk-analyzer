@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { migrate } from '@devops-risk-analyzer/db';
 import { analyzeRoutes } from './routes/analyze.js';
+import { timelineRoutes } from './routes/timeline.js';
 
 const app = Fastify({
   logger: {
@@ -11,6 +12,7 @@ const app = Fastify({
 await migrate();
 
 await app.register(analyzeRoutes);
+await app.register(timelineRoutes);
 
 app.get('/health', async () => ({ status: 'ok' }));
 

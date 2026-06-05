@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { submitAnalysis } from '../api/client.ts';
+import { submitAnalysis, submitTimeline } from '../api/client.ts';
 import { useJobStore } from '../stores/jobStore.ts';
 const router = useRouter();
 const store = useJobStore();
@@ -13,6 +13,7 @@ const showToken = ref(false);
 const loading = ref(false);
 const formError = ref('');
 const useCached = ref(true);
+const includeTimeline = ref(false);
 
 interface CommitOption {
   sha: string;
@@ -117,9 +118,26 @@ async function submit(): Promise<void> {
     if (response.data.cached) {
       store.setJob('cached');
       store.applyCompleted(response.data.result);
-      await router.push('/results/cached');
     } else {
       store.setJob(response.data.id);
+    }
+
+    if (includeTimeline.value) {
+      try {
+        const tlResponse = await submitTimeline({
+          repoUrl: repoUrl.value.trim(),
+          ...(githubToken.value ? { githubToken: githubToken.value } : {}),
+          ...(!useCached.value ? { forceRefresh: true } : {}),
+        });
+        store.setTimeline(tlResponse.data.id);
+      } catch {
+        // Timeline submission failure is non-fatal; continue to results
+      }
+    }
+
+    if (response.data.cached) {
+      await router.push('/results/cached');
+    } else {
       await router.push(`/results/${response.data.id}`);
     }
   } catch (err) {
@@ -210,6 +228,16 @@ async function submit(): Promise<void> {
           class="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
         />
         Use cached result if available
+      </label>
+
+      <label class="flex items-center gap-2 text-sm text-slate-300 select-none cursor-pointer">
+        <input
+          v-model="includeTimeline"
+          type="checkbox"
+          class="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
+        />
+        Include risk trend graph
+        <span class="text-slate-500 font-normal">(analyzes past month's commits)</span>
       </label>
 
       <p v-if="formError" class="text-red-400 text-sm">{{ formError }}</p>

@@ -178,7 +178,8 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
       }
     },
     {
-      connection: redis,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      connection: redis as any,
       concurrency,
       stalledInterval: 60_000,
       maxStalledCount: 1,

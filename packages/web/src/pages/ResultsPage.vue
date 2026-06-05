@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue';
+import { onMounted, computed, ref, watch } from 'vue';
 import { useJobStore } from '../stores/jobStore.ts';
 import { useJobStream } from '../composables/useJobStream.ts';
-import { getJob } from '../api/client.ts';
+import { getJob, openTimelineJobStream } from '../api/client.ts';
 import JobProgressBar from '../components/JobProgressBar.vue';
 import RiskMatrixGrid from '../components/RiskMatrixGrid.vue';
 import RiskSummaryCard from '../components/RiskSummaryCard.vue';
 import IssueTable from '../components/IssueTable.vue';
 import DevOpsPipelineSelector from '../components/DevOpsPipelineSelector.vue';
-import type { RiskPhase } from '@devops-risk-analyzer/shared';
+import RiskTrendGraph from '../components/RiskTrendGraph.vue';
+import type { RiskPhase, CommitRiskPoint, RiskMatrix } from '@devops-risk-analyzer/shared';
 
 const props = defineProps<{ jobId: string }>();
 const store = useJobStore();
 const activePhase = ref<RiskPhase>('code');
+const selectedCommit = ref<CommitRiskPoint | null>(null);
 
 // Bootstrap: if store has no job set (e.g. direct URL navigation), poll once then stream
 onMounted(async () => {
@@ -41,9 +43,27 @@ onMounted(async () => {
   if (store.status !== 'completed' && store.status !== 'failed') {
     useJobStream(props.jobId);
   }
+
+  // Start streaming the timeline job if one was requested
+  if (store.timelineJobId && store.timelineStatus !== 'completed' && store.timelineStatus !== 'failed') {
+    const es = openTimelineJobStream(store.timelineJobId);
+    es.onmessage = (e: MessageEvent) => {
+      const msg = JSON.parse(e.data as string) as { type: string; progress?: { value?: number; stage?: string }; result?: import('@devops-risk-analyzer/shared').TimelineResult; error?: string };
+      if (msg.type === 'progress' && msg.progress) store.applyTimelineProgress(msg.progress);
+      if (msg.type === 'completed' && msg.result) { store.applyTimelineCompleted(msg.result); es.close(); }
+      if (msg.type === 'failed' && msg.error) { store.applyTimelineFailed(msg.error); es.close(); }
+    };
+    es.onerror = () => es.close();
+  }
 });
 
-const matrix = computed(() => store.result?.riskMatrix ?? null);
+// When the active phase changes, deselect a commit so the graph feels fresh
+watch(activePhase, () => { selectedCommit.value = null; });
+
+// Display the selected commit's matrix when a node is clicked, otherwise show main result
+const displayMatrix = computed<RiskMatrix | null>(() =>
+  selectedCommit.value?.riskMatrix ?? store.result?.riskMatrix ?? null,
+);
 
 </script>
 
@@ -83,24 +103,63 @@ const matrix = computed(() => store.result?.riskMatrix ?? null);
     </div>
 
     <!-- Results -->
-    <template v-if="store.status === 'completed' && matrix">
+    <template v-if="store.status === 'completed' && displayMatrix">
       <!-- DevOps pipeline phase selector -->
       <div class="bg-slate-900 border border-slate-800 rounded-2xl px-6 py-3">
         <DevOpsPipelineSelector v-model="activePhase" />
+      </div>
+
+      <!-- Risk Trend Graph (shown below phase selector when timeline is requested) -->
+      <div v-if="store.timelineJobId" class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <h3 class="text-lg font-semibold text-white">Risk Trend — Past Month</h3>
+          <span
+            v-if="store.timelineStatus !== 'completed' && store.timelineStatus !== 'failed'"
+            class="text-sm text-slate-400 animate-pulse"
+          >
+            Analyzing… {{ store.timelineProgress }}%
+            <span v-if="store.timelineStage"> · {{ store.timelineStage }}</span>
+          </span>
+          <span v-else-if="store.timelineStatus === 'failed'" class="text-sm text-red-400">
+            Trend analysis failed
+          </span>
+          <span v-else-if="selectedCommit" class="text-sm text-slate-400">
+            Showing: {{ selectedCommit.shortSha }}
+            <button
+              class="ml-1 text-blue-400 hover:underline"
+              @click="selectedCommit = null"
+            >reset to HEAD</button>
+          </span>
+        </div>
+        <RiskTrendGraph
+          :points="store.timelineResult?.points ?? []"
+          :phase="activePhase"
+          :loading="store.timelineStatus !== 'completed' && store.timelineStatus !== 'failed'"
+          :selected-sha="selectedCommit?.sha"
+          @commit-click="selectedCommit = $event"
+        />
+        <p class="text-xs text-slate-600">
+          Click a node to view that commit's risk matrix below. "Code" phase scores for newly analyzed commits may exclude SonarQube.
+        </p>
       </div>
 
       <!-- Phase score card + Risk matrix side by side -->
       <div class="flex flex-col lg:flex-row gap-6 items-start">
         <!-- Single score card for the active phase -->
         <div class="w-full lg:w-64 flex-shrink-0">
-          <RiskSummaryCard :phase="matrix.phaseScores[activePhase]" />
+          <RiskSummaryCard :phase="displayMatrix.phaseScores[activePhase]" />
         </div>
 
         <!-- Risk matrix -->
         <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-          <h3 class="text-lg font-semibold text-white">Risk Matrix</h3>
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-lg font-semibold text-white">Risk Matrix</h3>
+            <span v-if="selectedCommit" class="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">
+              {{ selectedCommit.shortSha }} · {{ new Date(selectedCommit.date).toLocaleDateString() }}
+            </span>
+          </div>
           <div class="overflow-x-auto">
-            <RiskMatrixGrid :items="matrix.items" :phase="activePhase" />
+            <RiskMatrixGrid :items="displayMatrix.items" :phase="activePhase" />
           </div>
           <p class="text-xs text-slate-600">
             X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical) · Showing findings relevant to the <span class="capitalize text-slate-500">{{ activePhase }}</span> phase
@@ -113,11 +172,11 @@ const matrix = computed(() => store.result?.riskMatrix ?? null);
         <h3 class="text-lg font-semibold text-white">
           Findings — <span class="capitalize text-blue-400">{{ activePhase }}</span> phase
         </h3>
-        <IssueTable :items="matrix.items" :phase="activePhase" />
+        <IssueTable :items="displayMatrix.items" :phase="activePhase" />
       </div>
 
       <!-- SonarQube link -->
-      <div v-if="store.result?.sonarDashboardUrl" class="text-sm text-slate-500">
+      <div v-if="store.result?.sonarDashboardUrl && !selectedCommit" class="text-sm text-slate-500">
         Full SonarQube report:
         <a :href="store.result.sonarDashboardUrl" target="_blank" rel="noopener" class="text-blue-400 hover:underline">
           {{ store.result.sonarDashboardUrl }}
