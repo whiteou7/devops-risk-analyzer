@@ -122,6 +122,7 @@ async function submit(): Promise<void> {
       store.setJob(response.data.id);
     }
 
+    let timelineId: string | undefined;
     if (includeTimeline.value) {
       try {
         const tlResponse = await submitTimeline({
@@ -130,15 +131,17 @@ async function submit(): Promise<void> {
           ...(!useCached.value ? { forceRefresh: true } : {}),
         });
         store.setTimeline(tlResponse.data.id);
+        timelineId = tlResponse.data.id;
       } catch {
         // Timeline submission failure is non-fatal; continue to results
       }
     }
 
+    const query = timelineId ? { timeline: timelineId } : {};
     if (response.data.cached) {
-      await router.push('/results/cached');
+      await router.push({ path: '/results/cached', query });
     } else {
-      await router.push(`/results/${response.data.id}`);
+      await router.push({ path: `/results/${response.data.id}`, query });
     }
   } catch (err) {
     formError.value = (err as Error).message;

@@ -15,7 +15,7 @@ type PhaseFilter = RiskPhase | 'overall';
 
 const ALL_PHASES: RiskPhase[] = ['plan', 'code', 'build', 'test', 'release', 'deploy', 'operate', 'monitor'];
 
-const props = defineProps<{ jobId: string }>();
+const props = defineProps<{ jobId: string; timelineJobId?: string }>();
 const store = useJobStore();
 const activePhase = ref<PhaseFilter>('code');
 const selectedCommit = ref<CommitRiskPoint | null>(null);
@@ -24,28 +24,30 @@ const selectedCommit = ref<CommitRiskPoint | null>(null);
 onMounted(async () => {
   // 'cached' is a virtual job ID used when a result is served from the DB cache
   // without enqueuing a job. The store is already populated by HomePage.
-  if (props.jobId === 'cached') return;
+  if (props.jobId !== 'cached') {
+    if (store.jobId !== props.jobId) {
+      store.setJob(props.jobId); // calls reset(), which clears timelineJobId
+      try {
+        const response = await getJob(props.jobId);
+        const job = response.data;
+        if (job.status === 'completed' && job.result) {
+          store.applyCompleted(job.result);
+        } else if (job.status === 'failed') {
+          store.applyFailed(job.error ?? 'Unknown error');
+        }
+      } catch {
+        // Job not found — stream will handle it
+      }
+    }
 
-  if (store.jobId !== props.jobId) {
-    store.setJob(props.jobId);
-    try {
-      const response = await getJob(props.jobId);
-      const job = response.data;
-      if (job.status === 'completed' && job.result) {
-        store.applyCompleted(job.result);
-        return;
-      }
-      if (job.status === 'failed') {
-        store.applyFailed(job.error ?? 'Unknown error');
-        return;
-      }
-    } catch {
-      // Job not found — stream will handle it
+    if (store.status !== 'completed' && store.status !== 'failed') {
+      useJobStream(props.jobId);
     }
   }
 
-  if (store.status !== 'completed' && store.status !== 'failed') {
-    useJobStream(props.jobId);
+  // Restore timeline job from URL query param — must run after setJob since setJob calls reset()
+  if (props.timelineJobId && store.timelineJobId !== props.timelineJobId) {
+    store.setTimeline(props.timelineJobId);
   }
 
   // Start streaming the timeline job if one was requested
@@ -63,6 +65,16 @@ onMounted(async () => {
 
 // When the active phase changes, deselect a commit so the graph feels fresh
 watch(activePhase, () => { selectedCommit.value = null; });
+
+// Merge the authoritative main-analysis result into the timeline point for the HEAD commit.
+// The timeline runs lighter checks, so its HEAD scores can differ from the full analysis.
+const mergedTimelinePoints = computed<CommitRiskPoint[]>(() => {
+  const pts = store.timelineResult?.points ?? [];
+  const headSha = store.result?.commitSha;
+  const headMatrix = store.result?.riskMatrix;
+  if (!headSha || !headMatrix) return pts;
+  return pts.map(p => p.sha === headSha ? { ...p, riskMatrix: headMatrix } : p);
+});
 
 // Display the selected commit's matrix when a node is clicked, otherwise show main result
 const displayMatrix = computed<RiskMatrix | null>(() =>
@@ -159,11 +171,11 @@ const displayPhaseScore = computed<PhaseScore | null>(() => {
           </span>
         </div>
         <RiskTrendGraph
-          :points="store.timelineResult?.points ?? []"
+          :points="mergedTimelinePoints"
           :phase="activePhase"
           :loading="store.timelineStatus !== 'completed' && store.timelineStatus !== 'failed'"
           :selected-sha="selectedCommit?.sha"
-          @commit-click="selectedCommit = $event"
+          @commit-click="selectedCommit = $event.sha === store.result?.commitSha ? null : $event"
         />
         <p class="text-xs text-slate-600">
           Click a node to view that commit's risk matrix below. "Code" phase scores for newly analyzed commits may exclude SonarQube.
