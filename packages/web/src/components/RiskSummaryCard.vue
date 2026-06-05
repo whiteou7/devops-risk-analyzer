@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { PhaseScore } from '@devops-risk-analyzer/shared';
 
-defineProps<{ phase: PhaseScore }>();
+const props = defineProps<{ phase: PhaseScore; label?: string }>();
+const title = computed(() => props.label ?? `${props.phase.phase} Phase`);
 
 const gradeColors: Record<string, string> = {
   CRITICAL: 'text-red-400 border-red-800 bg-red-950/40',
@@ -22,7 +24,7 @@ const barColors: Record<string, string> = {
   <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
     <div class="flex items-center justify-between">
       <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider">
-        {{ phase.phase }} Phase
+        {{ title }}
       </h3>
       <span
         class="px-2.5 py-0.5 rounded-full text-xs font-bold border"

@@ -2,9 +2,11 @@
 import { computed, ref } from 'vue';
 import type { RiskItem, RiskPhase, RiskSource } from '@devops-risk-analyzer/shared';
 
+type PhaseFilter = RiskPhase | 'overall';
+
 const props = defineProps<{
   items: RiskItem[];
-  phase: RiskPhase;
+  phase: PhaseFilter;
 }>();
 
 // Grid config
@@ -23,14 +25,20 @@ function cellColor(likelihood: number, impact: number): string {
   return '#14532d';                  // green-900
 }
 
-// Items that participate in the currently selected phase, keyed with their phase-specific scores
-const phaseItems = computed(() =>
-  props.items.flatMap(item => {
+const phaseItems = computed(() => {
+  if (props.phase === 'overall') {
+    return props.items.flatMap(item => {
+      if (item.phases.length === 0) return [];
+      const worst = item.phases.reduce((a, b) => b.riskLevel > a.riskLevel ? b : a);
+      return [{ item, likelihood: worst.likelihood, impact: worst.impact, riskGrade: worst.riskGrade }];
+    });
+  }
+  return props.items.flatMap(item => {
     const pm = item.phases.find(p => p.phase === props.phase);
     if (!pm) return [];
     return [{ item, likelihood: pm.likelihood, impact: pm.impact, riskGrade: pm.riskGrade }];
-  }),
-);
+  });
+});
 
 // Group items by (likelihood, impact) cell
 const cellItems = computed(() => {
@@ -212,15 +220,22 @@ function gradeClass(grade: string): string {
           <div class="font-semibold text-white">{{ tooltip.item.title }}</div>
           <div class="text-slate-400 text-xs">{{ tooltip.item.detail }}</div>
           <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs mt-1">
-            <span class="text-slate-500">Risk in <span class="text-slate-300 capitalize">{{ phase }}</span>:
+            <span class="text-slate-500">
+              {{ phase === 'overall' ? 'Worst phase risk' : `Risk in ${phase}` }}:
               <span :class="gradeClass(tooltip.riskGrade)"> {{ tooltip.riskGrade }}</span>
             </span>
           </div>
           <div class="text-xs text-slate-500 mt-1">
-            Also affects:
-            <span class="text-slate-400">
-              {{ tooltip.item.phases.filter(p => p.phase !== phase).map(p => p.phase).join(', ') || 'none' }}
-            </span>
+            <template v-if="phase === 'overall'">
+              Phases:
+              <span class="text-slate-400">{{ tooltip.item.phases.map(p => p.phase).join(', ') || 'none' }}</span>
+            </template>
+            <template v-else>
+              Also affects:
+              <span class="text-slate-400">
+                {{ tooltip.item.phases.filter(p => p.phase !== phase).map(p => p.phase).join(', ') || 'none' }}
+              </span>
+            </template>
           </div>
         </div>
       </div>

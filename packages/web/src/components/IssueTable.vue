@@ -2,21 +2,29 @@
 import { computed, ref } from 'vue';
 import type { RiskItem, RiskGrade, RiskPhase } from '@devops-risk-analyzer/shared';
 
-const props = defineProps<{ items: RiskItem[]; phase: RiskPhase }>();
+type PhaseFilter = RiskPhase | 'overall';
+
+const props = defineProps<{ items: RiskItem[]; phase: PhaseFilter }>();
 
 const gradeOrder: Record<RiskGrade, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
 const filterGrade = ref<RiskGrade | 'ALL'>('ALL');
 const sortBy = ref<'riskLevel' | 'source'>('riskLevel');
 
-// Enrich each item with its phase-specific scores for the current phase context
-const enriched = computed(() =>
-  props.items.flatMap(item => {
+const enriched = computed(() => {
+  if (props.phase === 'overall') {
+    return props.items.flatMap(item => {
+      if (item.phases.length === 0) return [];
+      const worst = item.phases.reduce((a, b) => b.riskLevel > a.riskLevel ? b : a);
+      return [{ item, riskLevel: worst.riskLevel, riskGrade: worst.riskGrade, likelihood: worst.likelihood, impact: worst.impact }];
+    });
+  }
+  return props.items.flatMap(item => {
     const pm = item.phases.find(p => p.phase === props.phase);
     if (!pm) return [];
     return [{ item, riskLevel: pm.riskLevel, riskGrade: pm.riskGrade, likelihood: pm.likelihood, impact: pm.impact }];
-  }),
-);
+  });
+});
 
 const filtered = computed(() =>
   [...enriched.value]
@@ -65,7 +73,9 @@ const sourceLabel: Record<string, string> = {
         <option value="riskLevel">Sort: Risk Level</option>
         <option value="source">Sort: Source</option>
       </select>
-      <span class="self-center text-xs text-slate-500">{{ filtered.length }} finding(s) in <span class="capitalize">{{ phase }}</span> phase</span>
+      <span class="self-center text-xs text-slate-500">
+        {{ filtered.length }} finding(s) {{ phase === 'overall' ? 'across all phases' : `in ${phase} phase` }}
+      </span>
     </div>
 
     <div class="rounded-xl border border-slate-800 overflow-hidden">
@@ -113,7 +123,9 @@ const sourceLabel: Record<string, string> = {
             </td>
           </tr>
           <tr v-if="filtered.length === 0">
-            <td colspan="5" class="px-4 py-8 text-center text-slate-600">No findings for the <span class="capitalize">{{ phase }}</span> phase</td>
+            <td colspan="5" class="px-4 py-8 text-center text-slate-600">
+              {{ phase === 'overall' ? 'No findings across all phases' : `No findings for the ${phase} phase` }}
+            </td>
           </tr>
         </tbody>
       </table>

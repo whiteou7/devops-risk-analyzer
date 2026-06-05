@@ -9,11 +9,15 @@ import RiskSummaryCard from '../components/RiskSummaryCard.vue';
 import IssueTable from '../components/IssueTable.vue';
 import DevOpsPipelineSelector from '../components/DevOpsPipelineSelector.vue';
 import RiskTrendGraph from '../components/RiskTrendGraph.vue';
-import type { RiskPhase, CommitRiskPoint, RiskMatrix } from '@devops-risk-analyzer/shared';
+import type { RiskPhase, RiskGrade, PhaseScore, CommitRiskPoint, RiskMatrix } from '@devops-risk-analyzer/shared';
+
+type PhaseFilter = RiskPhase | 'overall';
+
+const ALL_PHASES: RiskPhase[] = ['plan', 'code', 'build', 'test', 'release', 'deploy', 'operate', 'monitor'];
 
 const props = defineProps<{ jobId: string }>();
 const store = useJobStore();
-const activePhase = ref<RiskPhase>('code');
+const activePhase = ref<PhaseFilter>('code');
 const selectedCommit = ref<CommitRiskPoint | null>(null);
 
 // Bootstrap: if store has no job set (e.g. direct URL navigation), poll once then stream
@@ -64,6 +68,29 @@ watch(activePhase, () => { selectedCommit.value = null; });
 const displayMatrix = computed<RiskMatrix | null>(() =>
   selectedCommit.value?.riskMatrix ?? store.result?.riskMatrix ?? null,
 );
+
+const displayPhaseScore = computed<PhaseScore | null>(() => {
+  const matrix = displayMatrix.value;
+  if (!matrix) return null;
+  if (activePhase.value !== 'overall') return matrix.phaseScores[activePhase.value];
+
+  const allScores = ALL_PHASES.map(ph => matrix.phaseScores[ph]);
+  const avgScore = Math.round(allScores.reduce((sum, s) => sum + s.score, 0) / allScores.length);
+  const grade: RiskGrade = avgScore >= 75 ? 'CRITICAL' : avgScore >= 50 ? 'HIGH' : avgScore >= 25 ? 'MEDIUM' : 'LOW';
+  const allItems = matrix.items.filter(i => i.phases.length > 0);
+  const gradeMap = new Map<RiskGrade, number>([['CRITICAL', 0], ['HIGH', 0], ['MEDIUM', 0], ['LOW', 0]]);
+  for (const item of allItems) {
+    const worst = item.phases.reduce((a, b) => b.riskLevel > a.riskLevel ? b : a);
+    gradeMap.set(worst.riskGrade, gradeMap.get(worst.riskGrade)! + 1);
+  }
+  return {
+    phase: 'plan' as RiskPhase,
+    score: avgScore,
+    grade,
+    itemCount: allItems.length,
+    breakdown: (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as RiskGrade[]).map(g => ({ grade: g, count: gradeMap.get(g)! })),
+  };
+});
 
 </script>
 
@@ -147,7 +174,11 @@ const displayMatrix = computed<RiskMatrix | null>(() =>
       <div class="flex flex-col lg:flex-row gap-6 items-start">
         <!-- Single score card for the active phase -->
         <div class="w-full lg:w-64 flex-shrink-0">
-          <RiskSummaryCard :phase="displayMatrix.phaseScores[activePhase]" />
+          <RiskSummaryCard
+            v-if="displayPhaseScore"
+            :phase="displayPhaseScore"
+            :label="activePhase === 'overall' ? 'Overall' : undefined"
+          />
         </div>
 
         <!-- Risk matrix -->
@@ -162,7 +193,8 @@ const displayMatrix = computed<RiskMatrix | null>(() =>
             <RiskMatrixGrid :items="displayMatrix.items" :phase="activePhase" />
           </div>
           <p class="text-xs text-slate-600">
-            X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical) · Showing findings relevant to the <span class="capitalize text-slate-500">{{ activePhase }}</span> phase
+            X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical) ·
+            {{ activePhase === 'overall' ? 'Showing all findings (worst-phase position)' : `Showing findings relevant to the ${activePhase} phase` }}
           </p>
         </div>
       </div>
@@ -170,7 +202,8 @@ const displayMatrix = computed<RiskMatrix | null>(() =>
       <!-- Issue table scoped to active phase -->
       <div class="space-y-3">
         <h3 class="text-lg font-semibold text-white">
-          Findings — <span class="capitalize text-blue-400">{{ activePhase }}</span> phase
+          Findings —
+          <span class="capitalize text-blue-400">{{ activePhase === 'overall' ? 'All Phases' : activePhase }}</span>
         </h3>
         <IssueTable :items="displayMatrix.items" :phase="activePhase" />
       </div>
