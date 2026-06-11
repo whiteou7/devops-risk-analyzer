@@ -12,8 +12,11 @@ redis.on('error', (err) => {
   console.error('[redis] connection error:', err.message);
 });
 
+// Plain options object avoids ioredis dual-version type conflict with bullmq's bundled ioredis
+export const bullmqConnection = { url: redisUrl };
+
 export const analysisQueue = new Queue<AnalyzeJobData>('analysis', {
-  connection: redis,
+  connection: bullmqConnection,
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 10_000 },
@@ -23,7 +26,7 @@ export const analysisQueue = new Queue<AnalyzeJobData>('analysis', {
 });
 
 export const timelineQueue = new Queue<TimelineJobData, TimelineResult>('timeline', {
-  connection: redis,
+  connection: bullmqConnection,
   defaultJobOptions: {
     attempts: 2,
     backoff: { type: 'exponential', delay: 10_000 },

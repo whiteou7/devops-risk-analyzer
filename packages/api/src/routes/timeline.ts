@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { QueueEvents } from 'bullmq';
-import { timelineQueue, redis } from '../queue.js';
+import { timelineQueue, bullmqConnection } from '../queue.js';
 import type {
   TimelineRequest,
   ApiResponse,
@@ -156,7 +156,7 @@ export async function timelineRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      const queueEvents = new QueueEvents('timeline', { connection: redis.duplicate() });
+      const queueEvents = new QueueEvents('timeline', { connection: bullmqConnection });
 
       const onProgress = ({ jobId, data }: { jobId: string; data: unknown }): void => {
         if (jobId !== id) return;

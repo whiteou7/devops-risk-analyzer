@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { QueueEvents } from 'bullmq';
-import { analysisQueue, redis } from '../queue.js';
+import { analysisQueue, bullmqConnection } from '../queue.js';
 import { findAnalysis } from '@devops-risk-analyzer/db';
 import type {
   AnalyzeRequest,
@@ -207,7 +207,7 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      const queueEvents = new QueueEvents('analysis', { connection: redis.duplicate() });
+      const queueEvents = new QueueEvents('analysis', { connection: bullmqConnection });
 
       const onProgress = ({ jobId, data }: { jobId: string; data: unknown }): void => {
         if (jobId !== id) return;

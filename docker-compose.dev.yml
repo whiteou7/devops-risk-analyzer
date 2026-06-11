@@ -1,0 +1,120 @@
+services:
+  redis:
+    extends:
+      file: docker-compose.yml
+      service: redis
+    networks:
+      - devops-risk-dev
+
+  sonarqube:
+    extends:
+      file: docker-compose.yml
+      service: sonarqube
+    networks:
+      - devops-risk-dev
+
+  postgres:
+    extends:
+      file: docker-compose.yml
+      service: postgres
+    networks:
+      - devops-risk-dev
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+      target: builder
+    restart: "no"
+    command: npm run dev --workspace=packages/api
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://devops_risk:${POSTGRES_PASSWORD:-changeme}@postgres:5432/devops_risk
+      PORT: 3000
+      LOG_LEVEL: debug
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+      - "9229:9229"
+    volumes:
+      - ./packages/api/src:/app/packages/api/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - /app/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - devops-risk-dev
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  worker:
+    build:
+      context: .
+      dockerfile: packages/worker/Dockerfile
+      target: builder
+    restart: "no"
+    command: npm run dev --workspace=packages/worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://devops_risk:${POSTGRES_PASSWORD:-changeme}@postgres:5432/devops_risk
+      SONAR_URL: http://sonarqube:9000
+      SONAR_TOKEN: ${SONAR_TOKEN}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      GIT_CLONE_DEPTH: ${GIT_CLONE_DEPTH:-50}
+      SKIP_TRIVY: ${SKIP_TRIVY:-false}
+      SKIP_GITLEAKS: ${SKIP_GITLEAKS:-false}
+      SKIP_HADOLINT: ${SKIP_HADOLINT:-false}
+      SKIP_CHECKOV: ${SKIP_CHECKOV:-false}
+      NODE_ENV: development
+    volumes:
+      - ./packages/worker/src:/app/packages/worker/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - /app/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      sonarqube:
+        condition: service_healthy
+    networks:
+      - devops-risk-dev
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+      target: builder
+    restart: "no"
+    command: npm run dev --workspace=packages/web
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://api:3000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./packages/web/src:/app/packages/web/src
+      - /app/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - devops-risk-dev
+
+networks:
+  devops-risk-dev:
+    driver: bridge
+
+volumes:
+  redis_data:
+  sonar_data:
+  sonar_extensions:
+  sonar_logs:
+  postgres_data:
