@@ -9,24 +9,30 @@ import RiskSummaryCard from '../components/RiskSummaryCard.vue';
 import IssueTable from '../components/IssueTable.vue';
 import DevOpsPipelineSelector from '../components/DevOpsPipelineSelector.vue';
 import RiskTrendGraph from '../components/RiskTrendGraph.vue';
-import type { RiskPhase, RiskGrade, PhaseScore, CommitRiskPoint, RiskMatrix } from '@devops-risk-analyzer/shared';
+import type { RiskPhase, RiskGrade, PhaseScore, CommitRiskPoint, RiskMatrix, Artifact, RiskItem } from '@devops-risk-analyzer/shared';
 
 type PhaseFilter = RiskPhase | 'overall';
 
 const ALL_PHASES: RiskPhase[] = ['plan', 'code', 'build', 'test', 'release', 'deploy', 'operate', 'monitor'];
+const ALL_ARTIFACTS: Artifact[] = ['documentation', 'source-code', 'testing', 'deployment'];
+const ARTIFACT_LABELS: Record<Artifact, string> = {
+  'documentation': 'Documentation',
+  'source-code':   'Source Code',
+  'testing':       'Testing',
+  'deployment':    'Deployment',
+};
 
 const props = defineProps<{ jobId: string; timelineJobId?: string }>();
 const store = useJobStore();
+const activeArtifact = ref<Artifact>('source-code');
 const activePhase = ref<PhaseFilter>('code');
 const selectedCommit = ref<CommitRiskPoint | null>(null);
 
 // Bootstrap: if store has no job set (e.g. direct URL navigation), poll once then stream
 onMounted(async () => {
-  // 'cached' is a virtual job ID used when a result is served from the DB cache
-  // without enqueuing a job. The store is already populated by HomePage.
   if (props.jobId !== 'cached') {
     if (store.jobId !== props.jobId) {
-      store.setJob(props.jobId); // calls reset(), which clears timelineJobId
+      store.setJob(props.jobId);
       try {
         const response = await getJob(props.jobId);
         const job = response.data;
@@ -45,12 +51,10 @@ onMounted(async () => {
     }
   }
 
-  // Restore timeline job from URL query param — must run after setJob since setJob calls reset()
   if (props.timelineJobId && store.timelineJobId !== props.timelineJobId) {
     store.setTimeline(props.timelineJobId);
   }
 
-  // Start streaming the timeline job if one was requested
   if (store.timelineJobId && store.timelineStatus !== 'completed' && store.timelineStatus !== 'failed') {
     const es = openTimelineJobStream(store.timelineJobId);
     es.onmessage = (e: MessageEvent) => {
@@ -63,11 +67,9 @@ onMounted(async () => {
   }
 });
 
-// When the active phase changes, deselect a commit so the graph feels fresh
 watch(activePhase, () => { selectedCommit.value = null; });
+watch(activeArtifact, () => { selectedCommit.value = null; });
 
-// Merge the authoritative main-analysis result into the timeline point for the HEAD commit.
-// The timeline runs lighter checks, so its HEAD scores can differ from the full analysis.
 const mergedTimelinePoints = computed<CommitRiskPoint[]>(() => {
   const pts = store.timelineResult?.points ?? [];
   const headSha = store.result?.commitSha;
@@ -76,34 +78,73 @@ const mergedTimelinePoints = computed<CommitRiskPoint[]>(() => {
   return pts.map(p => p.sha === headSha ? { ...p, riskMatrix: headMatrix } : p);
 });
 
-// Display the selected commit's matrix when a node is clicked, otherwise show main result
 const displayMatrix = computed<RiskMatrix | null>(() =>
   selectedCommit.value?.riskMatrix ?? store.result?.riskMatrix ?? null,
 );
 
-const displayPhaseScore = computed<PhaseScore | null>(() => {
+// Items filtered to the active artifact (or all items for the selected commit's matrix)
+const artifactItems = computed<RiskItem[]>(() => {
   const matrix = displayMatrix.value;
-  if (!matrix) return null;
-  if (activePhase.value !== 'overall') return matrix.phaseScores[activePhase.value];
+  if (!matrix) return [];
+  // When a commit is selected from the timeline, it has no artifact scores — show all items
+  if (selectedCommit.value) return matrix.items;
+  return matrix.items.filter(i => i.artifact === activeArtifact.value);
+});
 
-  const allScores = ALL_PHASES.map(ph => matrix.phaseScores[ph]);
+function buildOverallScore(items: RiskItem[], phaseScores: Record<RiskPhase, PhaseScore>): PhaseScore {
+  const allScores = ALL_PHASES.map(ph => phaseScores[ph]);
   const avgScore = Math.round(allScores.reduce((sum, s) => sum + s.score, 0) / allScores.length);
-  const grade: RiskGrade = avgScore >= 75 ? 'CRITICAL' : avgScore >= 50 ? 'HIGH' : avgScore >= 25 ? 'MEDIUM' : 'LOW';
-  const allItems = matrix.items.filter(i => i.phases.length > 0);
+  const withPhases = items.filter(i => i.phases.length > 0);
   const gradeMap = new Map<RiskGrade, number>([['CRITICAL', 0], ['HIGH', 0], ['MEDIUM', 0], ['LOW', 0]]);
-  for (const item of allItems) {
+  for (const item of withPhases) {
     const worst = item.phases.reduce((a, b) => b.riskLevel > a.riskLevel ? b : a);
     gradeMap.set(worst.riskGrade, gradeMap.get(worst.riskGrade)! + 1);
   }
+  const grade: RiskGrade = gradeMap.get('CRITICAL')! > 0 ? 'CRITICAL'
+    : gradeMap.get('HIGH')! > 0 ? 'HIGH'
+    : gradeMap.get('MEDIUM')! > 0 ? 'MEDIUM' : 'LOW';
   return {
     phase: 'plan' as RiskPhase,
     score: avgScore,
     grade,
-    itemCount: allItems.length,
+    itemCount: withPhases.length,
     breakdown: (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as RiskGrade[]).map(g => ({ grade: g, count: gradeMap.get(g)! })),
   };
+}
+
+const displayPhaseScore = computed<PhaseScore | null>(() => {
+  const matrix = displayMatrix.value;
+  if (!matrix) return null;
+
+  // When a commit is selected, use its overall matrix (no artifact breakdown available)
+  if (selectedCommit.value) {
+    if (activePhase.value !== 'overall') return matrix.phaseScores[activePhase.value];
+    return buildOverallScore(matrix.items, matrix.phaseScores);
+  }
+
+  const artifactScores = matrix.artifactPhaseScores?.[activeArtifact.value];
+  if (!artifactScores) return null;
+
+  if (activePhase.value !== 'overall') return artifactScores[activePhase.value];
+  return buildOverallScore(artifactItems.value, artifactScores);
 });
 
+// Artifact badge: uses the same logic as the summary card
+function artifactBadgeGrade(artifact: Artifact): RiskGrade | null {
+  const matrix = displayMatrix.value;
+  if (!matrix) return null;
+  const artifactScores = matrix.artifactPhaseScores?.[artifact];
+  if (!artifactScores) return null;
+  const items = matrix.items.filter(i => i.artifact === artifact);
+  return buildOverallScore(items, artifactScores).grade;
+}
+
+const GRADE_TAB_CLASS: Record<RiskGrade, string> = {
+  CRITICAL: 'text-red-400 border-red-700',
+  HIGH:     'text-orange-400 border-orange-700',
+  MEDIUM:   'text-yellow-400 border-yellow-700',
+  LOW:      'text-green-400 border-green-700',
+};
 </script>
 
 <template>
@@ -143,12 +184,8 @@ const displayPhaseScore = computed<PhaseScore | null>(() => {
 
     <!-- Results -->
     <template v-if="store.status === 'completed' && displayMatrix">
-      <!-- DevOps pipeline phase selector -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl px-6 py-3">
-        <DevOpsPipelineSelector v-model="activePhase" />
-      </div>
 
-      <!-- Risk Trend Graph (shown below phase selector when timeline is requested) -->
+      <!-- Risk Trend Graph -->
       <div v-if="store.timelineJobId" class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <h3 class="text-lg font-semibold text-white">Risk Trend — Past Month</h3>
@@ -182,43 +219,108 @@ const displayPhaseScore = computed<PhaseScore | null>(() => {
         </p>
       </div>
 
-      <!-- Phase score card + Risk matrix side by side -->
-      <div class="flex flex-col lg:flex-row gap-6 items-start">
-        <!-- Single score card for the active phase -->
-        <div class="w-full lg:w-64 flex-shrink-0">
-          <RiskSummaryCard
-            v-if="displayPhaseScore"
-            :phase="displayPhaseScore"
-            :label="activePhase === 'overall' ? 'Overall' : undefined"
-          />
+      <!-- Artifact tabs -->
+      <div v-if="!selectedCommit" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        <div class="flex border-b border-slate-800">
+          <button
+            v-for="artifact in ALL_ARTIFACTS"
+            :key="artifact"
+            class="flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            :class="activeArtifact === artifact
+              ? 'bg-slate-800 text-white border-b-2 border-blue-500'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+            @click="activeArtifact = artifact"
+          >
+            {{ ARTIFACT_LABELS[artifact] }}
+            <span
+              v-if="artifactBadgeGrade(artifact)"
+              class="text-xs px-1.5 py-0.5 rounded border font-semibold"
+              :class="GRADE_TAB_CLASS[artifactBadgeGrade(artifact)!]"
+            >{{ artifactBadgeGrade(artifact) }}</span>
+          </button>
         </div>
 
-        <!-- Risk matrix -->
-        <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-          <div class="flex items-center justify-between gap-2">
-            <h3 class="text-lg font-semibold text-white">Risk Matrix</h3>
-            <span v-if="selectedCommit" class="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">
-              {{ selectedCommit.shortSha }} · {{ new Date(selectedCommit.date).toLocaleDateString() }}
-            </span>
-          </div>
-          <div class="overflow-x-auto">
-            <RiskMatrixGrid :items="displayMatrix.items" :phase="activePhase" />
-          </div>
-          <p class="text-xs text-slate-600">
-            X-axis: Likelihood (1=Rare, 5=Almost Certain) · Y-axis: Impact (1=Negligible, 5=Critical) ·
-            {{ activePhase === 'overall' ? 'Showing all findings (worst-phase position)' : `Showing findings relevant to the ${activePhase} phase` }}
-          </p>
+        <!-- Empty state for Documentation tab when no Drive URL was submitted -->
+        <div
+          v-if="activeArtifact === 'documentation' && artifactItems.length === 0"
+          class="px-6 py-10 text-center text-slate-500"
+        >
+          <p class="font-medium text-slate-400">No documentation findings</p>
+          <p class="text-sm mt-1">Select a local documentation folder on the analysis form to enable AI-powered documentation risk analysis.</p>
         </div>
+
+        <template v-else>
+          <!-- Phase selector inside tab -->
+          <div class="px-6 pt-4">
+            <DevOpsPipelineSelector v-model="activePhase" />
+          </div>
+
+          <!-- Phase score card + Risk matrix -->
+          <div class="p-6 flex flex-col lg:flex-row gap-6 items-start">
+            <div class="w-full lg:w-64 flex-shrink-0">
+              <RiskSummaryCard
+                v-if="displayPhaseScore"
+                :phase="displayPhaseScore"
+                :label="activePhase === 'overall' ? `${ARTIFACT_LABELS[activeArtifact]} — Overall` : undefined"
+              />
+            </div>
+            <div class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4">
+              <h3 class="text-base font-semibold text-white">Risk Matrix</h3>
+              <div class="overflow-x-auto">
+                <RiskMatrixGrid :items="artifactItems" :phase="activePhase" />
+              </div>
+              <p class="text-xs text-slate-600">
+                X-axis: Likelihood · Y-axis: Impact ·
+                {{ activePhase === 'overall' ? `All ${ARTIFACT_LABELS[activeArtifact]} findings` : `${ARTIFACT_LABELS[activeArtifact]} findings in ${activePhase} phase` }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Findings table -->
+          <div class="px-6 pb-6 space-y-3">
+            <h3 class="text-base font-semibold text-white">
+              Findings —
+              <span class="text-blue-400">{{ ARTIFACT_LABELS[activeArtifact] }}</span>
+              <span class="text-slate-500"> / </span>
+              <span class="capitalize text-blue-400">{{ activePhase === 'overall' ? 'All Phases' : activePhase }}</span>
+            </h3>
+            <IssueTable :items="artifactItems" :phase="activePhase" />
+          </div>
+        </template>
       </div>
 
-      <!-- Issue table scoped to active phase -->
-      <div class="space-y-3">
-        <h3 class="text-lg font-semibold text-white">
-          Findings —
-          <span class="capitalize text-blue-400">{{ activePhase === 'overall' ? 'All Phases' : activePhase }}</span>
-        </h3>
-        <IssueTable :items="displayMatrix.items" :phase="activePhase" />
-      </div>
+      <!-- When a commit is selected from timeline, show its full matrix without artifact split -->
+      <template v-if="selectedCommit">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl px-6 py-3">
+          <DevOpsPipelineSelector v-model="activePhase" />
+        </div>
+        <div class="flex flex-col lg:flex-row gap-6 items-start">
+          <div class="w-full lg:w-64 flex-shrink-0">
+            <RiskSummaryCard
+              v-if="displayPhaseScore"
+              :phase="displayPhaseScore"
+              :label="activePhase === 'overall' ? 'Overall' : undefined"
+            />
+          </div>
+          <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-lg font-semibold text-white">Risk Matrix</h3>
+              <span class="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">
+                {{ selectedCommit.shortSha }} · {{ new Date(selectedCommit.date).toLocaleDateString() }}
+              </span>
+            </div>
+            <div class="overflow-x-auto">
+              <RiskMatrixGrid :items="displayMatrix.items" :phase="activePhase" />
+            </div>
+          </div>
+        </div>
+        <div class="space-y-3">
+          <h3 class="text-lg font-semibold text-white">
+            Findings — <span class="capitalize text-blue-400">{{ activePhase === 'overall' ? 'All Phases' : activePhase }}</span>
+          </h3>
+          <IssueTable :items="displayMatrix.items" :phase="activePhase" />
+        </div>
+      </template>
 
       <!-- SonarQube link -->
       <div v-if="store.result?.sonarDashboardUrl && !selectedCommit" class="text-sm text-slate-500">

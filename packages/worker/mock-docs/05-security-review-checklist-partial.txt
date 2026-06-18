@@ -1,0 +1,104 @@
+SECURITY REVIEW CHECKLIST — MLPipeline API v2.0
+REVIEWER: [UNASSIGNED]
+REVIEW DATE: [NOT SCHEDULED]
+TARGET RELEASE: 2026-06-20
+
+================================================================================
+STATUS SUMMARY
+================================================================================
+
+This checklist is 30% complete. The security review was started but the
+assigned reviewer left the team. No replacement has been named. The release
+date has not been adjusted despite the incomplete review.
+
+================================================================================
+SECTION A — AUTHENTICATION & AUTHORISATION
+================================================================================
+
+[x] A.1  All endpoints require a valid JWT
+[x] A.2  JWT signature algorithm is RS256 (not HS256)
+[ ] A.3  Token expiry enforced (max 1 hour)       ← NOT VERIFIED
+[ ] A.4  Refresh token rotation implemented        ← NOT IMPLEMENTED (TODO)
+[ ] A.5  Role-based access control documented      ← NO RBAC MATRIX EXISTS
+[ ] A.6  Service-to-service auth uses mTLS or     ← CURRENTLY USES SHARED
+         workload identity                             API KEY IN ENV VAR
+[ ] A.7  Privilege escalation paths reviewed       ← NOT REVIEWED
+
+================================================================================
+SECTION B — DATA HANDLING
+================================================================================
+
+[ ] B.1  PII fields identified and catalogued      ← NO DATA CATALOGUE EXISTS
+[ ] B.2  PII encrypted at rest (field-level)       ← STATUS UNKNOWN
+[ ] B.3  PII masked in logs                        ← LOGS CONTAIN RAW EMAIL
+                                                       ADDRESSES (BUG-1042)
+[ ] B.4  Data retention policy enforced            ← NO RETENTION POLICY DEFINED
+[ ] B.5  Cross-border data transfer assessed       ← ML TRAINING DATA SENT TO
+                                                       US-EAST-1 — GDPR IMPACT
+                                                       ASSESSMENT NOT DONE
+[ ] B.6  Backup encryption verified                ← NOT CHECKED
+
+================================================================================
+SECTION C — INPUT VALIDATION
+================================================================================
+
+[ ] C.1  All user inputs sanitised / validated     ← PARTIAL — only request body;
+                                                       query params not validated
+[ ] C.2  SQL injection mitigated (parameterised)   ← NOT REVIEWED
+[ ] C.3  Prompt injection risk assessed for LLM    ← NO ASSESSMENT EXISTS
+         endpoints
+[ ] C.4  File upload size and type restrictions    ← NO RESTRICTIONS ON MODEL
+                                                       ARTIFACT UPLOAD ENDPOINT
+[ ] C.5  Rate limiting on public endpoints         ← NOT IMPLEMENTED
+
+================================================================================
+SECTION D — DEPENDENCY & SUPPLY CHAIN
+================================================================================
+
+[ ] D.1  All dependencies pinned to exact versions ← requirements.txt uses
+                                                       unpinned ranges (~=, >=)
+[ ] D.2  Dependency audit (known CVEs cleared)     ← LAST RUN: 2025-11-20;
+                                                       numpy CVE-2025-XXXXX OPEN
+[ ] D.3  Build artefacts signed                    ← NOT SIGNED
+[ ] D.4  Third-party model weights provenance      ← NO VERIFICATION PROCESS;
+         verified                                      weights downloaded from
+                                                       public HuggingFace URL
+                                                       with no checksum check
+
+================================================================================
+SECTION E — INFRASTRUCTURE
+================================================================================
+
+[ ] E.1  Network segmentation reviewed             ← ML WORKER PODS HAVE
+                                                       UNRESTRICTED EGRESS
+[ ] E.2  Secrets management via vault/KMS          ← 4 SECRETS STILL IN
+                                                       PLAINTEXT ENV VARS IN
+                                                       HELM VALUES FILE
+[ ] E.3  Container runs as non-root                ← RUNS AS UID 0 IN PROD
+[ ] E.4  Kubernetes RBAC reviewed                  ← SERVICE ACCOUNT HAS
+                                                       cluster-admin BINDING
+[ ] E.5  TLS version and cipher suite reviewed     ← NOT REVIEWED
+
+================================================================================
+SECTION F — PENETRATION TESTING
+================================================================================
+
+Last penetration test: 2024-09-05 (v1.1 — different architecture)
+Findings from last pentest:
+  - HIGH: Unauthenticated model inference endpoint — STATUS: FIXED
+  - HIGH: SSRF via webhook URL parameter — STATUS: *** OPEN — NOT REMEDIATED ***
+  - MEDIUM: Verbose error messages leak stack traces — STATUS: OPEN
+
+Pre-release pentest for v2.0: NOT SCHEDULED
+No bug bounty programme exists.
+
+================================================================================
+SIGN-OFF REQUIREMENTS
+================================================================================
+
+Required sign-offs before release:
+  [ ] Security Lead (UNASSIGNED — position vacant since 2026-04-01)
+  [ ] DPO — GDPR data-flow assessment not provided to DPO yet
+  [ ] CISO — escalation path not documented
+
+Release is currently proceeding without any security sign-off.

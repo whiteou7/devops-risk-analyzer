@@ -1,0 +1,94 @@
+CI/CD PIPELINE SPECIFICATION — DataPlatform Monorepo
+TEAM: Data Engineering
+REVISION: 0.4 (DRAFT — not approved)
+DATE: 2026-04-22
+
+================================================================================
+OVERVIEW
+================================================================================
+
+This document describes the intended CI/CD pipeline for the DataPlatform
+monorepo. Several stages are still under discussion and marked as TODO.
+
+================================================================================
+PIPELINE STAGES
+================================================================================
+
+STAGE 1 — LINT & FORMAT
+  Tool: ruff, black
+  Enforced: yes (blocks merge)
+  Status: implemented
+
+STAGE 2 — UNIT TESTS
+  Tool: pytest
+  Coverage threshold: NONE SET
+  Status: implemented, but coverage gate disabled ("too many failures currently")
+
+STAGE 3 — INTEGRATION TESTS
+  Status: *** NOT IMPLEMENTED ***
+  Note: "Will add once staging environment is stable." No timeline given.
+  Risk: Integration layer between Spark jobs and Delta Lake is untested in CI.
+
+STAGE 4 — STATIC ANALYSIS / SAST
+  Status: *** NOT IN PIPELINE ***
+  Note: Bandit was evaluated but "too noisy." No alternative SAST tool adopted.
+  No security scanning of Python dependencies (no pip-audit, safety, or Snyk).
+
+STAGE 5 — CONTAINER BUILD
+  Tool: Docker buildx
+  Base image pinning: *** NO — uses latest tags ***
+  Image signing: not configured
+  SBOM generation: not configured
+
+STAGE 6 — STAGING DEPLOY
+  Status: manual — no automated staging promotion
+  Staging parity with production: UNKNOWN — no parity checklist
+
+STAGE 7 — PERFORMANCE / DATA QUALITY TESTS
+  Status: *** NOT PLANNED ***
+  No dbt tests are run in CI. Data quality checks run ad-hoc by analysts.
+
+STAGE 8 — PRODUCTION DEPLOY
+  Trigger: manual approval in GitHub Actions
+  Approvers list: *** NOT CONFIGURED — any maintainer can approve ***
+  Deployment to production is not gated on staging success.
+
+================================================================================
+SECRET MANAGEMENT
+================================================================================
+
+Secrets are currently stored as:
+  - GitHub Actions repository secrets (who has access: all maintainers)
+  - Some credentials hardcoded in .env files committed to the repo (see NOTE)
+
+NOTE: A scan revealed database passwords in `config/staging.env` committed in
+commit a3f8c21. Rotation has NOT been confirmed. There is no secrets-detection
+pre-commit hook or CI gate.
+
+================================================================================
+BRANCH STRATEGY
+================================================================================
+
+- Main branch: unprotected (force-push allowed)
+- No required reviewers policy
+- No conventional-commits enforcement
+- Release tags: applied manually with no signing
+
+================================================================================
+CHANGE MANAGEMENT
+================================================================================
+
+There is no change advisory board (CAB) process, change freeze policy, or
+documented approval gate for production deployments. Changes go to production
+as soon as a maintainer clicks the approve button, at any time of day.
+
+================================================================================
+OPEN ACTION ITEMS (unowned)
+================================================================================
+
+- [ ] Define coverage threshold and re-enable gate
+- [ ] Implement SAST stage (owner: UNASSIGNED, due: UNKNOWN)
+- [ ] Pin all base Docker images (owner: UNASSIGNED)
+- [ ] Remove hardcoded secrets from repo and rotate credentials
+- [ ] Protect main branch and require reviews
+- [ ] Document staging environment parity process

@@ -12,7 +12,7 @@ import {
   githubActionsToRiskItems,
   buildRiskMatrix,
 } from '@devops-risk-analyzer/shared';
-import { findAnalysis, saveAnalysis } from '@devops-risk-analyzer/db';
+import { findAnalysis, saveAnalysis, findDocContent } from '@devops-risk-analyzer/db';
 import { cloneRepo } from './steps/cloneRepo.js';
 import { runSonarScanner } from './steps/runSonarScanner.js';
 import { pollSonarTask } from './steps/pollSonarTask.js';
@@ -24,6 +24,7 @@ import { runCheckov } from './steps/runCheckov.js';
 import { analyzeGitHygiene } from './steps/analyzeGitHygiene.js';
 import { analyzeGithubActions } from './steps/analyzeGithubActions.js';
 import { fetchEpssScores } from './steps/fetchEpssScores.js';
+import { analyzeDocumentationWithAI } from './steps/analyzeDocumentationWithAI.js';
 import { cleanup } from './cleanup.js';
 import { redis } from './redis.js';
 
@@ -34,7 +35,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
   const worker = new Worker<AnalyzeJobData, AnalysisResult>(
     'analysis',
     async (job) => {
-      const { repoUrl, projectKey, githubToken, commitSha: requestedSha, forceRefresh } = job.data;
+      const { repoUrl, projectKey, githubToken, commitSha: requestedSha, forceRefresh, docHash } = job.data;
       const repoDir = path.join(os.tmpdir(), `analysis-${job.id}`);
       const jobId = job.id ?? 'unknown';
 
@@ -49,7 +50,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
         await job.updateProgress(15);
 
         // Check DB cache for this exact repo+commit before running any analysis
-        const cached = !forceRefresh ? await findAnalysis(repoUrl, resolvedSha) : null;
+        const cached = !forceRefresh ? await findAnalysis(repoUrl, resolvedSha, docHash ?? '') : null;
         if (cached) {
           console.log(`[worker] job ${jobId} cache hit for ${repoUrl}@${resolvedSha} — skipping analysis`);
           await job.log(`Cache hit for ${repoUrl}@${resolvedSha} — returning stored result`);
@@ -147,6 +148,21 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
           githubActions: githubActionsResult ?? { workflowCount: 0, findings: [] },
         };
 
+        // Analyze documentation artifact via AI if uploaded docs were provided
+        let docItems: import('@devops-risk-analyzer/shared').RiskItem[] = [];
+        if (docHash) {
+          await job.log('Loading uploaded documentation for AI analysis');
+          try {
+            const doc = await findDocContent(docHash);
+            if (!doc) throw new Error(`Doc content not found for hash ${docHash}`);
+            await job.log(`Analyzing documentation (${doc.fileNames.length} file(s), ${doc.content.length} chars)`);
+            docItems = await analyzeDocumentationWithAI(doc.content, doc.fileNames.join(', '));
+            await job.log(`Documentation analysis complete — ${docItems.length} finding(s)`);
+          } catch (err) {
+            console.warn('[worker] documentation analysis failed:', (err as Error).message);
+          }
+        }
+
         // Map all findings to RiskItems and build the risk matrix
         const allItems = [
           ...sonarIssuesToRiskItems(sonarResult.issues),
@@ -156,6 +172,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
           ...checkovFindingsToRiskItems(opsAnalysis.checkov.findings),
           ...gitHygieneToRiskItems(opsAnalysis.gitHygiene),
           ...githubActionsToRiskItems(opsAnalysis.githubActions.findings),
+          ...docItems,
         ];
 
         const riskMatrix = buildRiskMatrix(allItems);
@@ -167,7 +184,7 @@ export function createWorker(): Worker<AnalyzeJobData, AnalysisResult> {
         console.log(`[worker] job ${jobId} analysis complete — sha=${resolvedSha} qualityGate=${sonarResult.metrics.qualityGate}`);
         
         // Persist to DB so future requests for the same repo+commit are served from cache
-        await saveAnalysis(repoUrl, resolvedSha, projectKey, result);
+        await saveAnalysis(repoUrl, resolvedSha, projectKey, result, docHash ?? '');
         console.debug(`[worker] job ${jobId} result persisted to DB`);
 
         await job.updateProgress(100);

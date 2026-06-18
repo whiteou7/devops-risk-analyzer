@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { RiskItem, RiskPhase, RiskSource } from '@devops-risk-analyzer/shared';
+import type { RiskItem, RiskPhase } from '@devops-risk-analyzer/shared';
 
 type PhaseFilter = RiskPhase | 'overall';
 
@@ -83,17 +83,18 @@ function dotsForCell(likelihood: number, impact: number) {
   }));
 }
 
-const SOURCE_COLORS: Record<RiskSource, string> = {
-  'sonarqube':      '#3b82f6', // blue-500
-  'trivy':          '#f97316', // orange-500
-  'gitleaks':       '#ef4444', // red-500
-  'hadolint':       '#eab308', // yellow-500
-  'checkov':        '#a855f7', // purple-500
-  'git-hygiene':    '#14b8a6', // teal-500
-  'github-actions': '#22c55e', // green-500
+const SOURCE_COLORS: Record<string, string> = {
+  'sonarqube':        '#3b82f6', // blue-500
+  'trivy':            '#f97316', // orange-500
+  'gitleaks':         '#ef4444', // red-500
+  'hadolint':         '#eab308', // yellow-500
+  'checkov':          '#a855f7', // purple-500
+  'git-hygiene':      '#14b8a6', // teal-500
+  'github-actions':   '#22c55e', // green-500
+  'ai-documentation': '#ec4899', // pink-500
 };
 
-function dotColor(source: RiskSource): string {
+function dotColor(source: string): string {
   return SOURCE_COLORS[source] ?? '#94a3b8';
 }
 

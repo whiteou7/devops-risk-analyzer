@@ -1,0 +1,73 @@
+PROJECT: PaymentGateway v3.2 — User Acceptance Testing Checklist
+PREPARED BY: QA Team
+DATE: 2026-05-14
+STATUS: DRAFT
+
+================================================================================
+SECTION 1 — FUNCTIONAL REQUIREMENTS
+================================================================================
+
+[ ] 1.1  Checkout flow completes without errors
+[ ] 1.2  Credit card tokenisation returns a valid token
+[ ] 1.3  3DS2 challenge flow displays correctly on mobile
+[ ] 1.4  Order confirmation email is sent within 30 seconds
+[ ] 1.5  Refund endpoint returns HTTP 200 for valid refund request
+
+NOTE: Items 1.6–1.14 (currency conversion, FX rate caching, multi-currency
+settlement, chargeback webhook, partial refund, subscription billing, trial
+period expiry, promo-code redemption, and invoice PDF generation) have been
+deferred to a follow-up checklist that has NOT yet been written.
+
+================================================================================
+SECTION 2 — NON-FUNCTIONAL REQUIREMENTS
+================================================================================
+
+[ ] 2.1  Page load time < 2 s on broadband
+
+[MISSING] Performance baselines for mobile (3G/4G), peak load targets, and
+p99 latency thresholds have NOT been defined. No load-test results are
+referenced here.
+
+[MISSING] Security acceptance criteria are absent. There is no sign-off
+requirement for PCI-DSS scope validation, penetration test results, or
+OWASP Top-10 verification before go-live.
+
+================================================================================
+SECTION 3 — REGRESSION SCOPE
+================================================================================
+
+The following areas are explicitly OUT OF SCOPE for this UAT round:
+
+- Admin portal
+- Fraud scoring engine
+- Webhook retry logic
+- Settlement reconciliation
+
+No risk justification is provided for excluding these areas. There is no
+documented approval for these exclusions from the product owner.
+
+================================================================================
+SECTION 4 — SIGN-OFF
+================================================================================
+
+[ ] Business Owner sign-off
+[ ] Security sign-off          ← NO OWNER NAMED
+[ ] Legal / Compliance         ← NOT INCLUDED IN DISTRIBUTION LIST
+[ ] Operations                 ← RUNBOOK NOT YET WRITTEN (see JIRA OPS-441)
+
+Go-live date: 2026-06-01  (hard deadline set by Marketing; no contingency
+buffer documented)
+
+Post-release monitoring plan: TBD
+Rollback procedure: TBD
+
+================================================================================
+KNOWN OPEN ISSUES AT UAT ENTRY
+================================================================================
+
+BUG-881  Payment declined incorrectly for Amex cards — SEVERITY: HIGH — OPEN
+BUG-902  Duplicate charge on network timeout — SEVERITY: CRITICAL — OPEN
+BUG-917  3DS redirect loop on Safari 17 — SEVERITY: HIGH — OPEN
+
+These issues are recorded but the checklist does not specify a minimum
+defect-closure threshold required before UAT can be signed off.

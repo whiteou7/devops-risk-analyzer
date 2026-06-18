@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { submitAnalysis, submitTimeline } from '../api/client.ts';
+import { submitAnalysis, submitTimeline, uploadDocs } from '../api/client.ts';
 import { useJobStore } from '../stores/jobStore.ts';
 const router = useRouter();
 const store = useJobStore();
@@ -14,6 +14,10 @@ const loading = ref(false);
 const formError = ref('');
 const useCached = ref(true);
 const includeTimeline = ref(false);
+const docFiles = ref<File[]>([]);
+const docHash = ref('');
+const docUploadStatus = ref<'idle' | 'uploading' | 'done' | 'error'>('idle');
+const docUploadError = ref('');
 
 interface CommitOption {
   sha: string;
@@ -100,6 +104,14 @@ watch(githubToken, (token: string) => {
   }
 });
 
+function onDocFilesChange(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  docFiles.value = input.files ? Array.from(input.files) : [];
+  docHash.value = '';
+  docUploadStatus.value = 'idle';
+  docUploadError.value = '';
+}
+
 async function submit(): Promise<void> {
   formError.value = '';
   if (!repoUrl.value.trim()) {
@@ -108,11 +120,31 @@ async function submit(): Promise<void> {
   }
   loading.value = true;
   try {
+    // Upload docs first if files are selected and not yet uploaded
+    if (docFiles.value.length > 0 && !docHash.value) {
+      docUploadStatus.value = 'uploading';
+      docUploadError.value = '';
+      try {
+        const filePayloads = await Promise.all(
+          docFiles.value.map(f => f.text().then(content => ({ name: f.name, content }))),
+        );
+        const result = await uploadDocs(filePayloads);
+        docHash.value = result.docHash;
+        docUploadStatus.value = 'done';
+      } catch (err) {
+        docUploadStatus.value = 'error';
+        docUploadError.value = (err as Error).message;
+        loading.value = false;
+        return;
+      }
+    }
+
     const response = await submitAnalysis({
       repoUrl: repoUrl.value.trim(),
       ...(selectedSha.value ? { commitSha: selectedSha.value } : {}),
       ...(githubToken.value ? { githubToken: githubToken.value } : {}),
       ...(!useCached.value ? { forceRefresh: true } : {}),
+      ...(docHash.value ? { docHash: docHash.value } : {}),
     });
 
     if (response.data.cached) {
@@ -156,8 +188,8 @@ async function submit(): Promise<void> {
     <div class="text-center">
       <h1 class="text-4xl font-bold text-white mb-3">DevOps Risk Analyzer</h1>
       <p class="text-slate-400 text-lg max-w-xl">
-        Scan a GitHub repository for Dev and Ops phase risks.<br />
-        Results are plotted on an impact × likelihood risk matrix.
+        Analyze a GitHub repository across four artifact types — Source Code, Testing, Deployment, and Documentation.<br />
+        Results are plotted on an impact × likelihood risk matrix per DevOps phase.
       </p>
     </div>
 
@@ -222,6 +254,35 @@ async function submit(): Promise<void> {
           placeholder="ghp_..."
           class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="text-sm font-medium text-slate-300">
+          Documentation
+          <span class="text-slate-500 font-normal">(optional — local folder)</span>
+        </label>
+        <label
+          class="flex items-center gap-2 w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 cursor-pointer hover:border-slate-500 transition-colors"
+        >
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+          </svg>
+          <span class="text-sm truncate">
+            {{ docFiles.length > 0 ? `${docFiles.length} file(s) selected` : 'Select a folder…' }}
+          </span>
+          <input
+            type="file"
+            class="hidden"
+            webkitdirectory
+            multiple
+            accept=".txt,.md,.rst,.csv,.json,.yaml,.yml"
+            @change="onDocFilesChange"
+          />
+        </label>
+        <p v-if="docUploadStatus === 'uploading'" class="text-xs text-blue-400 animate-pulse">Uploading documentation…</p>
+        <p v-else-if="docUploadStatus === 'done'" class="text-xs text-emerald-400">Documentation uploaded ✓</p>
+        <p v-else-if="docUploadStatus === 'error'" class="text-xs text-red-400">{{ docUploadError }}</p>
+        <p v-else class="text-xs text-slate-500">Select a local folder of text documents to analyze for DevOps risks using AI.</p>
       </div>
 
       <label class="flex items-center gap-2 text-sm text-slate-300 select-none cursor-pointer">

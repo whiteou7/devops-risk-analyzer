@@ -14,8 +14,9 @@ import type {
   PhaseMapping,
   PhaseScore,
   RiskMatrix,
+  Artifact,
 } from './types.js';
-import { ALL_PHASES } from './types.js';
+import { ALL_PHASES, ALL_ARTIFACTS } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Risk mappings loader
@@ -87,6 +88,12 @@ function buildPhaseMappings(entry: PhasedMapping): PhaseMapping[] {
 // SonarQube → RiskItem[]
 // ---------------------------------------------------------------------------
 
+function isTestComponent(component: string): boolean {
+  const lower = component.toLowerCase();
+  return lower.includes('/test/') || lower.includes('/tests/') || lower.includes('/__tests__/')
+    || lower.includes('/spec/') || lower.includes('.test.') || lower.includes('.spec.');
+}
+
 export function sonarIssuesToRiskItems(issues: SonarIssue[]): RiskItem[] {
   const mappings = getMappings();
   return issues.map((issue, i) => {
@@ -95,6 +102,7 @@ export function sonarIssuesToRiskItems(issues: SonarIssue[]): RiskItem[] {
     return {
       id: makeId('sonarqube', i, issue.key),
       source: 'sonarqube' as const,
+      artifact: isTestComponent(issue.component) ? 'testing' as const : 'source-code' as const,
       phases: buildPhaseMappings(entry),
       title: `${issue.type}: ${issue.rule}`,
       detail: issue.message,
@@ -117,8 +125,8 @@ export function sonarIssuesToRiskItems(issues: SonarIssue[]): RiskItem[] {
  */
 const CVE_PHASE_WEIGHTS: Record<string, Record<string, { likelihood: number; impact: number }>> = {
   LIBRARY: {
-    code:    { likelihood: 1.0, impact: 0.8 },
     build:   { likelihood: 1.2, impact: 1.0 },
+    deploy:  { likelihood: 1.5, impact: 1.3 },
     operate: { likelihood: 1.5, impact: 1.2 },
   },
   DOCKERFILE: {
@@ -206,6 +214,7 @@ export function trivyFindingsToRiskItems(findings: TrivyFinding[]): RiskItem[] {
     return {
       id: makeId('trivy', i, f.cveId),
       source: 'trivy' as const,
+      artifact: 'deployment' as const,
       phases,
       title: f.cveId ? `${f.cveId} in ${f.packageName}` : `CVE in ${f.packageName}`,
       detail: f.title,
@@ -224,6 +233,7 @@ export function secretFindingsToRiskItems(findings: SecretFinding[]): RiskItem[]
     return {
       id: makeId('gitleaks', i, f.ruleId),
       source: 'gitleaks' as const,
+      artifact: 'source-code' as const,
       phases: buildPhaseMappings(entry),
       title: `Secret detected: ${f.description}`,
       detail: `Found in ${f.file} at line ${f.line}`,
@@ -244,6 +254,7 @@ export function hadolintFindingsToRiskItems(findings: HadolintFinding[]): RiskIt
     return {
       id: makeId('hadolint', i, f.code),
       source: 'hadolint' as const,
+      artifact: 'deployment' as const,
       phases: buildPhaseMappings(entry),
       title: `Dockerfile: ${f.code}`,
       detail: f.message,
@@ -264,6 +275,7 @@ export function checkovFindingsToRiskItems(findings: CheckovFinding[]): RiskItem
     return {
       id: makeId('checkov', i, f.checkId),
       source: 'checkov' as const,
+      artifact: 'deployment' as const,
       phases: buildPhaseMappings(entry),
       title: `IaC: ${f.checkId}`,
       detail: f.checkName,
@@ -285,6 +297,7 @@ export function gitHygieneToRiskItems(metrics: GitHygieneMetrics): RiskItem[] {
     items.push({
       id: makeId('git-hygiene', idx++, 'single-author'),
       source: 'git-hygiene',
+      artifact: 'source-code' as const,
       phases: buildPhaseMappings(mappings['git-hygiene']['single-author']),
       title: 'Single author (bus factor risk)',
       detail: `Only ${metrics.uniqueAuthors} unique contributor(s) detected`,
@@ -295,6 +308,7 @@ export function gitHygieneToRiskItems(metrics: GitHygieneMetrics): RiskItem[] {
     items.push({
       id: makeId('git-hygiene', idx++, 'no-gitignore'),
       source: 'git-hygiene',
+      artifact: 'source-code' as const,
       phases: buildPhaseMappings(mappings['git-hygiene']['no-gitignore']),
       title: 'Missing .gitignore',
       detail: 'No .gitignore file found — secrets or build artifacts may be committed',
@@ -315,6 +329,7 @@ export function githubActionsToRiskItems(findings: GithubActionsFinding[]): Risk
     return {
       id: makeId('github-actions', i, f.rule),
       source: 'github-actions' as const,
+      artifact: 'deployment' as const,
       phases: buildPhaseMappings(entry),
       title: `GitHub Actions: ${f.rule}`,
       detail: f.message,
@@ -347,7 +362,9 @@ export function aggregatePhaseScore(items: RiskItem[], phase: RiskPhase): PhaseS
   return {
     phase,
     score,
-    grade: scoreToGrade(score),
+    grade: gradeCounts['CRITICAL'] > 0 ? 'CRITICAL'
+      : gradeCounts['HIGH'] > 0 ? 'HIGH'
+      : gradeCounts['MEDIUM'] > 0 ? 'MEDIUM' : 'LOW',
     itemCount: phaseMappings.length,
     breakdown: (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as RiskGrade[]).map(g => ({
       grade: g,
@@ -365,8 +382,14 @@ export function buildRiskMatrix(allItems: RiskItem[]): RiskMatrix {
     ALL_PHASES.map(phase => [phase, aggregatePhaseScore(allItems, phase)]),
   ) as Record<RiskPhase, PhaseScore>;
 
-  return {
-    items: allItems,
-    phaseScores,
-  };
+  const artifactPhaseScores = Object.fromEntries(
+    ALL_ARTIFACTS.map(artifact => {
+      const artifactItems = allItems.filter(i => i.artifact === artifact);
+      return [artifact, Object.fromEntries(
+        ALL_PHASES.map(phase => [phase, aggregatePhaseScore(artifactItems, phase)]),
+      ) as Record<RiskPhase, PhaseScore>];
+    }),
+  ) as Record<Artifact, Record<RiskPhase, PhaseScore>>;
+
+  return { items: allItems, phaseScores, artifactPhaseScores };
 }

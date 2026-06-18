@@ -50,6 +50,7 @@ const sourceLabel: Record<string, string> = {
   checkov: 'Checkov',
   'git-hygiene': 'Git',
   'github-actions': 'GH Actions',
+  'ai-documentation': 'AI Docs',
 };
 </script>
 

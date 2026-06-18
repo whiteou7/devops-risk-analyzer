@@ -90,6 +90,7 @@ COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/db/dist ./packages/db/dist
 COPY --from=builder /app/packages/worker/dist ./packages/worker/dist
 COPY packages/shared/config ./packages/shared/config
+COPY packages/worker/mock-docs ./packages/worker/mock-docs
 
 ENV NODE_ENV=production
 

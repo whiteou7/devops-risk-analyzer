@@ -1,0 +1,116 @@
+[
+  {
+    "id": "ai-documentation-0",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "Critical open defects entering UAT without a minimum closure threshold",
+    "detail": "BUG-902 (duplicate charge, CRITICAL) and two HIGH-severity bugs are open at UAT entry. No defect-closure gate is documented, so release can proceed regardless of outstanding issues.",
+    "phases": [
+      { "phase": "test",    "impact": 5, "likelihood": 5, "riskLevel": 25, "riskGrade": "CRITICAL" },
+      { "phase": "release", "impact": 5, "likelihood": 4, "riskLevel": 20, "riskGrade": "CRITICAL" }
+    ]
+  },
+  {
+    "id": "ai-documentation-1",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "No security acceptance criteria — PCI-DSS and OWASP sign-off absent before go-live",
+    "detail": "The UAT checklist contains no security sign-off requirements, no penetration-test evidence, and no PCI-DSS scope validation. Security owner is unnamed; legal/compliance is excluded from the distribution list.",
+    "phases": [
+      { "phase": "release", "impact": 5, "likelihood": 4, "riskLevel": 20, "riskGrade": "CRITICAL" },
+      { "phase": "deploy",  "impact": 4, "likelihood": 4, "riskLevel": 16, "riskGrade": "HIGH" }
+    ]
+  },
+  {
+    "id": "ai-documentation-2",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "Rollback procedure and post-release monitoring plan both marked TBD at hard go-live deadline",
+    "detail": "The UAT sign-off sheet lists rollback procedure and monitoring plan as TBD with no contingency buffer. A hard marketing deadline with no documented fallback creates high deployment and operational risk.",
+    "phases": [
+      { "phase": "deploy",  "impact": 5, "likelihood": 3, "riskLevel": 15, "riskGrade": "HIGH" },
+      { "phase": "operate", "impact": 4, "likelihood": 4, "riskLevel": 16, "riskGrade": "HIGH" },
+      { "phase": "monitor", "impact": 4, "likelihood": 4, "riskLevel": 16, "riskGrade": "HIGH" }
+    ]
+  },
+  {
+    "id": "ai-documentation-3",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "Incomplete UAT scope — 9 functional areas deferred without risk acceptance",
+    "detail": "Items 1.6–1.14 (currency conversion, chargebacks, partial refunds, subscriptions, promo-codes, invoicing) are deferred to a follow-up checklist that has not yet been written, with no risk sign-off from the product owner.",
+    "phases": [
+      { "phase": "test",    "impact": 4, "likelihood": 4, "riskLevel": 16, "riskGrade": "HIGH" },
+      { "phase": "release", "impact": 4, "likelihood": 3, "riskLevel": 12, "riskGrade": "HIGH" }
+    ]
+  },
+  {
+    "id": "ai-documentation-4",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "Deployment runbook missing rollback steps and environment-specific configuration",
+    "detail": "The deployment runbook documents the happy path only. Rollback steps, environment variable differences between staging and production, and database migration reversal procedures are absent.",
+    "phases": [
+      { "phase": "deploy",  "impact": 4, "likelihood": 3, "riskLevel": 12, "riskGrade": "HIGH" },
+      { "phase": "operate", "impact": 3, "likelihood": 3, "riskLevel": 9,  "riskGrade": "MEDIUM" }
+    ]
+  },
+  {
+    "id": "ai-documentation-5",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "CI pipeline specification omits security scanning and integration test stages",
+    "detail": "The pipeline spec defines build and unit-test stages but is missing SAST, DAST, dependency scanning, and integration test stages. Vulnerabilities introduced at code time are not caught before release.",
+    "phases": [
+      { "phase": "build",   "impact": 3, "likelihood": 4, "riskLevel": 12, "riskGrade": "HIGH" },
+      { "phase": "test",    "impact": 4, "likelihood": 4, "riskLevel": 16, "riskGrade": "HIGH" },
+      { "phase": "release", "impact": 3, "likelihood": 3, "riskLevel": 9,  "riskGrade": "MEDIUM" }
+    ]
+  },
+  {
+    "id": "ai-documentation-6",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "Incident response plan in draft — escalation paths and on-call ownership undefined",
+    "detail": "The incident response plan is marked DRAFT with no approval date. On-call rotation, severity-based escalation matrix, and external communication templates are all missing, leaving the team without a tested playbook.",
+    "phases": [
+      { "phase": "operate", "impact": 4, "likelihood": 4, "riskLevel": 16, "riskGrade": "HIGH" },
+      { "phase": "monitor", "impact": 3, "likelihood": 4, "riskLevel": 12, "riskGrade": "HIGH" }
+    ]
+  },
+  {
+    "id": "ai-documentation-7",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "Security review checklist incomplete — threat model and pentest scope absent",
+    "detail": "The security review checklist covers only 40% of OWASP controls and contains no threat model, no pentest scope definition, and no sign-off criteria. High-risk attack surfaces (payment flows, auth) are unchecked.",
+    "phases": [
+      { "phase": "plan",    "impact": 4, "likelihood": 3, "riskLevel": 12, "riskGrade": "HIGH" },
+      { "phase": "code",    "impact": 3, "likelihood": 3, "riskLevel": 9,  "riskGrade": "MEDIUM" },
+      { "phase": "release", "impact": 4, "likelihood": 4, "riskLevel": 16, "riskGrade": "HIGH" }
+    ]
+  },
+  {
+    "id": "ai-documentation-8",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "No performance baselines or load-test targets defined for non-broadband scenarios",
+    "detail": "Only a single broadband page-load threshold (< 2 s) is specified. Mobile (3G/4G), peak-load targets, and p99 latency thresholds are absent, making it impossible to verify acceptable performance before release.",
+    "phases": [
+      { "phase": "test",    "impact": 3, "likelihood": 4, "riskLevel": 12, "riskGrade": "HIGH" },
+      { "phase": "operate", "impact": 3, "likelihood": 3, "riskLevel": 9,  "riskGrade": "MEDIUM" },
+      { "phase": "monitor", "impact": 2, "likelihood": 3, "riskLevel": 6,  "riskGrade": "MEDIUM" }
+    ]
+  },
+  {
+    "id": "ai-documentation-9",
+    "source": "ai-documentation",
+    "artifact": "documentation",
+    "title": "Excluded UAT areas (fraud engine, webhook retries) lack documented risk justification",
+    "detail": "Four high-value areas are explicitly excluded from UAT scope with no risk justification and no product owner sign-off for the exclusion. Defects in these areas may reach production undetected.",
+    "phases": [
+      { "phase": "test",    "impact": 3, "likelihood": 3, "riskLevel": 9,  "riskGrade": "MEDIUM" },
+      { "phase": "release", "impact": 3, "likelihood": 3, "riskLevel": 9,  "riskGrade": "MEDIUM" }
+    ]
+  }
+]

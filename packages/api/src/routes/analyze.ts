@@ -43,13 +43,14 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
             githubToken: { type: 'string' },
             commitSha: { type: 'string' },
             forceRefresh: { type: 'boolean' },
+            docHash: { type: 'string' },
           },
           additionalProperties: false,
         },
       },
     },
     async (request, reply) => {
-      const { repoUrl, githubToken, commitSha, forceRefresh } = request.body;
+      const { repoUrl, githubToken, commitSha, forceRefresh, docHash } = request.body;
 
       if (!GITHUB_URL_PATTERN.test(repoUrl)) {
         return reply
@@ -65,7 +66,7 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
 
       // Cache check: only possible when the caller supplies an explicit commit SHA and hasn't requested a fresh run
       if (commitSha && !forceRefresh) {
-        const cached = await findAnalysis(repoUrl, commitSha).catch(() => null);
+        const cached = await findAnalysis(repoUrl, commitSha, docHash ?? '').catch(() => null);
         if (cached) {
           const body: ApiResponse<AnalyzeResponseData> = {
             data: {
@@ -89,6 +90,7 @@ export async function analyzeRoutes(app: FastifyInstance): Promise<void> {
         commitSha,
         ...(githubToken ? { githubToken } : {}),
         ...(forceRefresh ? { forceRefresh: true } : {}),
+        ...(docHash ? { docHash } : {}),
       });
 
       const body: ApiResponse<AnalyzeResponseData> = {

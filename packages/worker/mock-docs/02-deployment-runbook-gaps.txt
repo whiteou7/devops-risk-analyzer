@@ -1,0 +1,86 @@
+DEPLOYMENT RUNBOOK — InventoryService v1.8
+ENVIRONMENT: Production (AWS eu-west-1)
+LAST UPDATED: 2026-03-02
+AUTHOR: Platform Team
+
+================================================================================
+1. PRE-DEPLOYMENT CHECKLIST
+================================================================================
+
+1.1  Confirm feature flags are toggled correctly in LaunchDarkly
+      → No documented list of flags relevant to this release
+      → No flag-state snapshot procedure defined
+
+1.2  Database migration
+      → Run: flyway migrate
+      → *** ROLLBACK SCRIPT NOT PROVIDED ***
+      → *** ESTIMATED MIGRATION TIME NOT DOCUMENTED ***
+      → *** LOCK IMPACT ON LIVE TABLES NOT ASSESSED ***
+
+1.3  Notify #ops-alerts Slack channel
+      → Template message: TBD
+
+================================================================================
+2. DEPLOYMENT STEPS
+================================================================================
+
+2.1  Promote Docker image tag from staging to production ECR
+2.2  Update ECS task definition (manual console step — not automated)
+2.3  Trigger rolling deployment via ECS service update
+
+There is no blue/green or canary strategy documented. The rollout is
+all-at-once. A failed deployment will take all instances offline simultaneously.
+
+Deployment window: "business hours preferred" — no formal change-freeze window
+or CAB approval process is referenced.
+
+================================================================================
+3. SMOKE TESTS
+================================================================================
+
+After deployment, verify:
+  - /healthz returns HTTP 200
+  - (no other automated smoke tests defined)
+
+Manual checks are expected but not scripted. The person performing the
+deployment must "use their judgement."
+
+================================================================================
+4. ROLLBACK PROCEDURE
+================================================================================
+
+4.1  *** SECTION INTENTIONALLY LEFT BLANK — TO BE COMPLETED ***
+
+There is currently no documented rollback procedure. In the event of a critical
+failure, engineers are expected to coordinate in the #incidents Slack channel.
+The last known good image tag is not tracked anywhere.
+
+================================================================================
+5. POST-DEPLOYMENT MONITORING
+================================================================================
+
+Watch the following dashboards:
+  - Grafana: [LINK BROKEN — dashboard was deleted 2026-01-15]
+  - CloudWatch alarms: no specific alarms listed
+  - Error budget: not calculated for this service
+
+Duration to monitor after deploy: "a while" — no SLO-based criterion for
+declaring the deployment successful.
+
+================================================================================
+6. ON-CALL ESCALATION
+================================================================================
+
+Primary on-call: rotation managed in PagerDuty
+Secondary: [REDACTED — left company 2025-11-30, replacement not appointed]
+Incident commander process: not documented for this service
+Severity definitions: see global runbook (link broken)
+
+================================================================================
+7. DEPENDENCIES
+================================================================================
+
+Upstream services that must be available before deployment:
+  - ProductCatalogService (version compatibility matrix: NOT DOCUMENTED)
+  - OrderService (API contract: last validated 2025-08-10, may be stale)
+  - External carrier API: no circuit-breaker or fallback strategy documented

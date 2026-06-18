@@ -72,9 +72,12 @@ services:
       SKIP_GITLEAKS: ${SKIP_GITLEAKS:-false}
       SKIP_HADOLINT: ${SKIP_HADOLINT:-false}
       SKIP_CHECKOV: ${SKIP_CHECKOV:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MOCK_DOC_ANALYSIS_PATH: ${MOCK_DOC_ANALYSIS_PATH:-}
       NODE_ENV: development
     volumes:
       - ./packages/worker/src:/app/packages/worker/src
+      - ./packages/worker/mock-docs:/app/packages/worker/mock-docs
       - ./packages/shared/src:/app/packages/shared/src
       - /app/node_modules
     depends_on:

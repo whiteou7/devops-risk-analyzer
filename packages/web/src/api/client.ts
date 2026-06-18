@@ -8,6 +8,29 @@ import type {
 
 const BASE = '/api';
 
+export interface DocUploadResult {
+  docHash: string;
+  fileCount: number;
+  totalChars: number;
+}
+
+export async function uploadDocs(
+  files: Array<{ name: string; content: string }>,
+): Promise<DocUploadResult> {
+  const res = await fetch(`${BASE}/docs/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    const msg = (err as { error?: { message?: string } }).error?.message ?? res.statusText;
+    throw new Error(msg);
+  }
+  const json = await res.json() as { data: DocUploadResult };
+  return json.data;
+}
+
 export async function submitAnalysis(
   body: AnalyzeRequest,
 ): Promise<ApiResponse<AnalyzeResponseData>> {

@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { migrate } from '@devops-risk-analyzer/db';
 import { analyzeRoutes } from './routes/analyze.js';
+import { docsRoutes } from './routes/docs.js';
 import { timelineRoutes } from './routes/timeline.js';
 
 const app = Fastify({
@@ -12,6 +13,7 @@ const app = Fastify({
 await migrate();
 
 await app.register(analyzeRoutes);
+await app.register(docsRoutes);
 await app.register(timelineRoutes);
 
 app.get('/health', async () => ({ status: 'ok' }));

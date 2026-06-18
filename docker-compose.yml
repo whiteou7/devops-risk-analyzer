@@ -89,6 +89,8 @@ services:
       SKIP_GITLEAKS: ${SKIP_GITLEAKS:-false}
       SKIP_HADOLINT: ${SKIP_HADOLINT:-false}
       SKIP_CHECKOV: ${SKIP_CHECKOV:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MOCK_DOC_ANALYSIS_PATH: ${MOCK_DOC_ANALYSIS_PATH:-}
     depends_on:
       redis:
         condition: service_healthy

@@ -1,0 +1,95 @@
+INCIDENT RESPONSE PLAN — CustomerPortal SaaS
+STATUS: DRAFT — NEVER FORMALLY REVIEWED OR APPROVED
+VERSION: 1.0
+DATE: 2025-09-11
+
+================================================================================
+PURPOSE
+================================================================================
+
+This document is intended to guide the on-call team when a production incident
+occurs on the CustomerPortal platform. It has not been reviewed since the
+platform was migrated to Kubernetes in Q4 2025. Several sections refer to the
+old VM-based architecture and are no longer accurate.
+
+================================================================================
+SEVERITY DEFINITIONS
+================================================================================
+
+SEV-1: Complete outage — all users affected
+SEV-2: Partial outage — >25% users affected
+SEV-3: Degraded performance
+SEV-4: Minor issue, no user impact
+
+NOTE: There are no documented SLA response times for SEV-3 or SEV-4. SEV-1
+and SEV-2 SLAs were defined in the old SLA document (link: BROKEN) and have
+not been re-confirmed with the current business stakeholders.
+
+================================================================================
+DETECTION & ALERTING
+================================================================================
+
+Alerts are configured in PagerDuty based on the following monitors:
+  - Synthetic uptime check (every 5 min) — currently DISABLED (cost saving)
+  - API error-rate alert (threshold: 5%) — last verified: 2025-06-03
+  - Database connection pool alert — *** NOT CONFIGURED ***
+  - Memory/OOM alert — *** NOT CONFIGURED ***
+  - Disk usage alert — *** NOT CONFIGURED ***
+
+The Kubernetes cluster has no HPA (Horizontal Pod Autoscaler) alert. Pods that
+are crash-looping will not page on-call unless an engineer notices manually.
+
+================================================================================
+RESPONSE PROCEDURE
+================================================================================
+
+1. Acknowledge the PagerDuty alert (auto-escalates after 15 min)
+2. Join the incident Slack channel: #incidents
+3. Assess severity using definitions above
+4. [FOR SEV-1/SEV-2] Page the incident commander
+
+INCIDENT COMMANDER ROSTER:
+  - [REDACTED] — departed 2026-02-14
+  - [REDACTED] — on parental leave until 2026-08-01
+  - Backup: *** NOT DESIGNATED ***
+
+5. Open a Statuspage incident (credentials: stored in 1Password vault
+   "Shared-Ops" — access requires approval from VP Eng, who may not be
+   available at 3 AM)
+
+6. Diagnose and remediate
+   Runbooks available: NONE documented for this service. Engineers are
+   expected to use prior knowledge.
+
+7. All-clear declaration: undocumented — typically a verbal announcement in Slack.
+
+================================================================================
+COMMUNICATION PLAN
+================================================================================
+
+Customer communication during incidents:
+  - Template: DOES NOT EXIST
+  - Who sends external comms: UNCLEAR (Engineering vs. Customer Success?)
+  - Regulatory notification (GDPR 72-hour breach notification): not addressed
+
+Internal stakeholder notification list: not maintained
+Executive escalation path: not documented
+
+================================================================================
+POST-INCIDENT REVIEW
+================================================================================
+
+Post-mortems are encouraged but not mandatory. There is no blameless
+post-mortem template. Historical post-mortems are stored in Confluence under
+a space that has been archived. No trends analysis is performed across incidents.
+
+Action item tracking from post-mortems: ad-hoc, in personal Jira backlogs.
+Closure rate of post-mortem action items: UNKNOWN.
+
+================================================================================
+TRAINING & DRILLS
+================================================================================
+
+Incident response drills: NEVER CONDUCTED
+On-call onboarding documentation: DOES NOT EXIST
+Shadow on-call programme: DOES NOT EXIST

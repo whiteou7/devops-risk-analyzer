@@ -13,6 +13,8 @@ export interface AnalyzeJobData {
   githubToken?: string;
   /** When true, skip the DB cache and always run a fresh analysis. */
   forceRefresh?: boolean;
+  /** SHA-256 hash of uploaded documentation files (from POST /docs/upload). */
+  docHash?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,9 +153,11 @@ export interface OpsAnalysis {
 
 export type RiskPhase = 'plan' | 'code' | 'build' | 'test' | 'release' | 'deploy' | 'operate' | 'monitor';
 export type RiskGrade = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-export type RiskSource = 'sonarqube' | 'trivy' | 'gitleaks' | 'hadolint' | 'checkov' | 'git-hygiene' | 'github-actions';
+export type RiskSource = 'sonarqube' | 'trivy' | 'gitleaks' | 'hadolint' | 'checkov' | 'git-hygiene' | 'github-actions' | 'ai-documentation';
+export type Artifact = 'documentation' | 'source-code' | 'testing' | 'deployment';
 
 export const ALL_PHASES: RiskPhase[] = ['plan', 'code', 'build', 'test', 'release', 'deploy', 'operate', 'monitor'];
+export const ALL_ARTIFACTS: Artifact[] = ['documentation', 'source-code', 'testing', 'deployment'];
 
 /** Per-phase independent risk score for a single finding. */
 export interface PhaseMapping {
@@ -167,6 +171,7 @@ export interface PhaseMapping {
 export interface RiskItem {
   id: string;
   source: RiskSource;
+  artifact: Artifact;
   /** One entry per pipeline phase this finding affects, each with independent scoring. */
   phases: PhaseMapping[];
   title: string;
@@ -186,6 +191,7 @@ export interface PhaseScore {
 export interface RiskMatrix {
   items: RiskItem[];
   phaseScores: Record<RiskPhase, PhaseScore>;
+  artifactPhaseScores: Record<Artifact, Record<RiskPhase, PhaseScore>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +222,8 @@ export interface AnalyzeRequest {
   commitSha?: string;
   /** When true, skip the cache and always run a fresh analysis. */
   forceRefresh?: boolean;
+  /** SHA-256 hash of uploaded documentation files (from POST /docs/upload). */
+  docHash?: string;
 }
 
 /** Envelope for all successful API responses. */
